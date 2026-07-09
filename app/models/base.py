@@ -26,5 +26,5 @@ class BaseEntity(SQLModel):
             "nullable": False,
         },
     )
-    created_by: Optional[int] = Field(default=None, nullable=True)
-    updated_by: Optional[int] = Field(default=None, nullable=True)
+    created_by: Optional[int] = Field(default=None, sa_type=BigInteger, nullable=True)
+    updated_by: Optional[int] = Field(default=None, sa_type=BigInteger, nullable=True)
