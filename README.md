@@ -1,0 +1,16 @@
+# Studio
+
+쇼츠 자동 생성 웹앱. (설계: docs/superpowers/specs/2026-07-09-studio-design.md)
+
+## 개발 실행
+
+1. 의존성 설치: `uv sync`
+2. 환경 파일: `cp .env.example .env` 후 값 확인 (DB 포트는 기본 5437)
+3. DB 기동: `docker compose up -d db`
+4. 마이그레이션: `uv run alembic upgrade head`
+5. 서버 실행: `uv run uvicorn app.main:app --reload`
+6. 확인: http://localhost:8000/health → `{"status":"ok"}`
+
+## 테스트
+
+`uv run pytest` (Docker 데몬 실행 필요 — testcontainers가 임시 Postgres 기동)
