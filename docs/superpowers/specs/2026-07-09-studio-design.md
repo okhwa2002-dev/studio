@@ -123,6 +123,10 @@ User ──1:N──▶ Project ──1:N──▶ Stage ──1:N──▶ Asse
   - `created_at` 생성일시 · `updated_at` 수정일시
   - `created_by` 생성자 · `updated_by` 수정자 (둘 다 `users.id` FK)
 - `created_by`/`updated_by`는 앱 계층에서 **현재 로그인 사용자(current_user)** 로 자동 채움(SQLAlchemy 이벤트 리스너 또는 서비스 계층). 시스템/시드 생성분은 `NULL` 허용.
+- **시간대(타임존):** 모든 일시 컬럼은 `TIMESTAMPTZ`로 **UTC 저장**, 화면에는 **현지 로컬시간으로 변환해 표시**(기본 `Asia/Seoul`, KST).
+  - 저장을 UTC로 일관화 → 클라우드 이전·다지역·서머타임에도 안전.
+  - 변환 위치: 프론트에서 브라우저 로컬 타임존으로 렌더(기본), 또는 API 응답 시 `APP_TIMEZONE` 기준 변환.
+  - 기본 타임존은 `.env`의 `APP_TIMEZONE=Asia/Seoul`로 설정(변경 가능).
 
 ```python
 class BaseEntity(SQLModel):             # 공통 믹스인 (자체는 테이블 아님)
@@ -359,6 +363,7 @@ STORAGE_BACKEND=local (→ 나중에 s3), STORAGE_PATH
 ANTHROPIC_API_KEY, PEXELS_API_KEY(선택), ELEVENLABS_API_KEY(선택)
 ADMIN_EMAIL / ADMIN_PASSWORD (최초 관리자 시드)
 CORS_ORIGINS, SECURE_COOKIES(로컬=false, 클라우드=true)
+APP_TIMEZONE=Asia/Seoul   # 화면 표시용 로컬 타임존(저장은 UTC)
 ```
 - 저장소는 `utils/storage.py` 뒤에 → 로컬 디스크 ↔ S3 무코드 교체.
 - 로컬/클라우드 차이는 `.env`만으로 흡수. 시크릿은 git 미포함(`.env.example`만 커밋).
