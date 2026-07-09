@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.error_code import ErrorCode
+from app.db import raw_connection
+from app.queries import queries
 
 
 class AppError(Exception):
@@ -30,20 +30,14 @@ HARDCODED_FALLBACK = ResolvedError(
 async def resolve_error(
     session: AsyncSession, code: str, message: str | None = None
 ) -> ResolvedError:
-    row = (
-        await session.execute(
-            select(ErrorCode).where(ErrorCode.code == code, ErrorCode.is_active == True)  # noqa: E712
-        )
-    ).scalar_one_or_none()
-    if row is not None:
-        return ResolvedError(row.code, message or row.message, row.http_status)
+    conn = await raw_connection(session)
 
-    default = (
-        await session.execute(
-            select(ErrorCode).where(ErrorCode.is_default == True, ErrorCode.is_active == True)  # noqa: E712
-        )
-    ).scalars().first()
+    row = await queries.find_active_by_code(conn, code=code)
+    if row is not None:
+        return ResolvedError(row["code"], message or row["message"], row["http_status"])
+
+    default = await queries.find_default(conn)
     if default is not None:
-        return ResolvedError(default.code, message or default.message, default.http_status)
+        return ResolvedError(default["code"], message or default["message"], default["http_status"])
 
     return HARDCODED_FALLBACK
