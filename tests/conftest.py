@@ -25,7 +25,15 @@ async def db_engine(pg_url):
 
 @pytest_asyncio.fixture
 async def db_session(db_engine) -> AsyncSession:
-    maker = async_sessionmaker(db_engine, expire_on_commit=False)
+    # 외부 커넥션 트랜잭션 + SAVEPOINT 조인 패턴으로 테스트 격리를 보장한다.
+    # 테스트 코드가 session.commit()을 호출해도 SAVEPOINT만 커밋되므로,
+    # 여기서 바깥 트랜잭션을 rollback하면 이번 테스트의 모든 변경이 사라진다.
+    connection = await db_engine.connect()
+    trans = await connection.begin()
+    maker = async_sessionmaker(
+        bind=connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
+    )
     async with maker() as session:
         yield session
-        await session.rollback()
+    await trans.rollback()
+    await connection.close()
