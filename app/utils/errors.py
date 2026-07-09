@@ -20,7 +20,7 @@ class ResolvedError:
     http_status: int
 
 
-_HARDCODED_FALLBACK = ResolvedError(
+HARDCODED_FALLBACK = ResolvedError(
     code="UNKNOWN_ERROR",
     message="알 수 없는 오류가 발생했습니다.",
     http_status=500,
@@ -46,4 +46,4 @@ async def resolve_error(
     if default is not None:
         return ResolvedError(default.code, message or default.message, default.http_status)
 
-    return _HARDCODED_FALLBACK
+    return HARDCODED_FALLBACK
