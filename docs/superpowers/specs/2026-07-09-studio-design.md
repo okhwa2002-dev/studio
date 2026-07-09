@@ -123,16 +123,16 @@ User ──1:N──▶ Project ──1:N──▶ Stage ──1:N──▶ Asse
   - `created_at` 생성일시 · `updated_at` 수정일시
   - `created_by` 생성자 · `updated_by` 수정자 (둘 다 `users.id` FK)
 - `created_by`/`updated_by`는 앱 계층에서 **현재 로그인 사용자(current_user)** 로 자동 채움(SQLAlchemy 이벤트 리스너 또는 서비스 계층). 시스템/시드 생성분은 `NULL` 허용.
-- **시간대(타임존):** 모든 일시 컬럼은 `TIMESTAMPTZ`로 **UTC 저장**, 화면에는 **현지 로컬시간으로 변환해 표시**(기본 `Asia/Seoul`, KST).
-  - 저장을 UTC로 일관화 → 클라우드 이전·다지역·서머타임에도 안전.
-  - 변환 위치: 프론트에서 브라우저 로컬 타임존으로 렌더(기본), 또는 API 응답 시 `APP_TIMEZONE` 기준 변환.
-  - 기본 타임존은 `.env`의 `APP_TIMEZONE=Asia/Seoul`로 설정(변경 가능).
+- **시간대(타임존):** 모든 일시 컬럼은 **naive `TIMESTAMP`(timezone 정보 없음)** 로, **저장 시점부터 현지 로컬 벽시계 시각**(기본 `Asia/Seoul`, KST)을 담는다.
+  - 계산 위치: 애플리케이션(Python) 쪽에서 `app/utils/time.py`의 `now_local()`이 `APP_TIMEZONE` 기준 현재 벽시계 시각을 계산해 값으로 채움(`created_at`은 `default_factory`, `updated_at`은 `onupdate`). DB 서버 시각(`now()`)에 의존하지 않음.
+  - 기본 타임존은 `.env`의 `APP_TIMEZONE=Asia/Seoul`로 설정(변경 가능). 이 값을 바꾸면 이후 저장되는 값도 그 타임존 벽시계 기준으로 바뀜.
+  - **트레이드오프(의도적으로 감수):** UTC 저장 방식(클라우드 이전·다지역·서머타임에 유리)보다 로컬시간 그대로 저장하는 쪽을 선택함. 여러 타임존 사용자가 생기거나 서버를 다른 지역으로 옮길 경우, 과거 데이터의 재해석/마이그레이션이 필요할 수 있음을 인지하고 진행.
 
 ```python
 class BaseEntity(SQLModel):             # 공통 믹스인 (자체는 테이블 아님)
     id: int = Field(primary_key=True)   # BIGINT, 자동 증가(IDENTITY)
-    created_at: datetime                # 생성일시 (기본값 now)
-    updated_at: datetime                # 수정일시 (수정 시 자동 갱신)
+    created_at: datetime                # 생성일시 (naive, 로컬 벽시계 시각)
+    updated_at: datetime                # 수정일시 (naive, 수정 시 로컬 벽시계로 갱신)
     created_by: int | None              # 생성자  FK → users.id
     updated_by: int | None              # 수정자  FK → users.id
 
@@ -392,7 +392,7 @@ STORAGE_BACKEND=local (→ 나중에 s3), STORAGE_PATH
 ANTHROPIC_API_KEY, PEXELS_API_KEY(선택), ELEVENLABS_API_KEY(선택)
 ADMIN_EMAIL / ADMIN_PASSWORD (최초 관리자 시드)
 CORS_ORIGINS, SECURE_COOKIES(로컬=false, 클라우드=true)
-APP_TIMEZONE=Asia/Seoul   # 화면 표시용 로컬 타임존(저장은 UTC)
+APP_TIMEZONE=Asia/Seoul   # DB 저장값 자체의 기준 로컬 타임존(naive TIMESTAMP)
 ```
 - 저장소는 `utils/storage.py` 뒤에 → 로컬 디스크 ↔ S3 무코드 교체.
 - 로컬/클라우드 차이는 `.env`만으로 흡수. 시크릿은 git 미포함(`.env.example`만 커밋).

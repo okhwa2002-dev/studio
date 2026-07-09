@@ -33,17 +33,21 @@ def test_alembic_upgrade_head_creates_error_codes_table(monkeypatch):
                     def _read(sync_conn):
                         insp = inspect(sync_conn)
                         tables = insp.get_table_names()
-                        columns = {c["name"] for c in insp.get_columns("error_codes")}
-                        return tables, columns
+                        cols = insp.get_columns("error_codes")
+                        columns = {c["name"] for c in cols}
+                        created_at_col = next(c for c in cols if c["name"] == "created_at")
+                        return tables, columns, created_at_col["type"]
 
                     return await conn.run_sync(_read)
             finally:
                 await engine.dispose()
 
-        tables, columns = asyncio.run(_inspect())
+        tables, columns, created_at_type = asyncio.run(_inspect())
 
     assert "error_codes" in tables
     assert {
         "id", "created_at", "updated_at", "created_by", "updated_by",
         "code", "message", "http_status", "is_default", "is_active",
     } <= columns
+    # 실제 마이그레이션 경로로 만들어진 스키마도 naive(로컬시간) 컬럼이어야 한다.
+    assert created_at_type.timezone is False
