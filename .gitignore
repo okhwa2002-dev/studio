@@ -1,0 +1,23 @@
+# session tooling
+.omc/
+
+# env & secrets
+.env
+*.local
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# node / frontend
+node_modules/
+dist/
+
+# app storage (generated media)
+storage/
+
+# os
+.DS_Store
+Thumbs.db
