@@ -6,7 +6,9 @@ from fastapi.responses import JSONResponse
 from app.api.health import router as health_router
 from app.db import get_db
 from app.utils.errors import AppError, HARDCODED_FALLBACK, resolve_error
+from app.utils.logging import configure_logging
 
+configure_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Studio")

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     app_timezone: str = "Asia/Seoul"
     storage_backend: str = "local"
     storage_path: str = "./storage"
+    log_dir: str = "D:/workspace/ok2020/log/studio"
     cors_origins: list[str] = []
     secure_cookies: bool = False
 
