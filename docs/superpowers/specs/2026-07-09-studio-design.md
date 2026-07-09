@@ -161,6 +161,14 @@ class Asset(BaseEntity, table=True):
     path: str
     meta: dict (JSONB)                  # 길이·해상도·크기 등
     # id, created_at/by, updated_at/by → BaseEntity 상속
+
+class ErrorCode(BaseEntity, table=True):   # 에러 소스 관리(관리자 페이지에서 CRUD)
+    code: str                           # 고유 코드 (예: "AUTH_INVALID_CREDENTIALS")
+    message: str                        # 표시 메시지
+    http_status: int = 400              # 매핑할 HTTP 상태코드
+    is_default: bool = False            # 디폴트 에러 여부 (전체에서 1건만 true)
+    is_active: bool = True              # 비활성 시 조회 실패로 간주 → 디폴트로 대체
+    # id, created_at/by, updated_at/by → BaseEntity 상속
 ```
 
 ### 파이프라인 단계
@@ -274,7 +282,8 @@ def require_admin(user=Depends(current_user)):    # role != admin → 403
 관리자에게만 추가로 표시(role == admin):
   🛡️ 관리자 ▼
      ├─ 가입 승인 (대기 N)   ├─ 사용자 관리
-     ├─ 전체 프로젝트         └─ 시스템 설정
+     ├─ 전체 프로젝트         ├─ 에러 코드 관리
+     └─ 시스템 설정
 ```
 
 ### URL 구조 (한 앱 안)
@@ -282,7 +291,8 @@ def require_admin(user=Depends(current_user)):    # role != admin → 403
 /dashboard
 /projects  /projects/new  /projects/{id}
 /settings
-/admin/approvals  /admin/users  /admin/projects  /admin/system   ← admin 가드
+/admin/approvals  /admin/users  /admin/projects
+/admin/error-codes  /admin/system                                ← admin 가드
 ```
 
 ### 이중 방어
@@ -355,6 +365,25 @@ REGISTRY = {
 | 워커 | procrastinate 재시도/데드레터, 트랜잭션으로 상태 일관성 |
 | API | 전역 예외 핸들러 → 일관 JSON `{code, message}` |
 | 검증 | 실행 전 validate()로 조기 실패 |
+
+### 에러 코드 중앙 관리 (관리자 페이지 분리)
+- **관리 화면:** `/admin/error-codes` — 에러 소스(코드·메시지·HTTP상태)를 CRUD로 관리하고, **디폴트 에러 1건**(`is_default=true`)을 지정·보관.
+- **동작(리졸버):** 각 화면단이 에러 시 **코드(+선택적 메시지)** 를 넘기면, 서버가 코드로 카탈로그를 조회.
+  - 코드가 **존재(active)** → 해당 에러(코드·메시지·상태) 반환.
+  - 코드가 **없음/비활성** → **디폴트 에러**를 반환.
+- 전역 예외 핸들러가 이 리졸버를 통해 항상 일관된 `{code, message}`로 응답 → 화면에 하드코딩된 에러 문구 산재 방지.
+
+```python
+# utils/errors.py (개념)  ── core/api가 사용
+def resolve_error(code: str, message: str | None = None) -> ErrorResponse:
+    ec = catalog.get(code)                       # 코드로 조회 (캐시 + DB)
+    if ec and ec.is_active:
+        return ErrorResponse(ec.code, ec.message, ec.http_status)
+    d = catalog.get_default()                    # 없으면 디폴트 에러
+    return ErrorResponse(d.code, message or d.message, d.http_status)
+```
+- 성능: 자주 쓰이므로 카탈로그를 **메모리 캐시**하고, 관리 페이지에서 변경 시 캐시 무효화.
+- 시드: 최초 실행 시 **디폴트 에러 + 주요 코드**를 시드로 삽입(관리자 페이지에서 이후 편집).
 
 ### 설정 (12-factor, 배포 독립)
 ```
