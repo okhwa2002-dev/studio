@@ -23,3 +23,16 @@ async def test_ensure_admin_seeded_is_idempotent(db_session):
 
     assert first is True
     assert second is False
+
+
+async def test_ensure_admin_seeded_normalizes_email(db_session):
+    conn = await raw_connection(db_session)
+
+    created = await ensure_admin_seeded(conn, " Seed-Admin3@Example.com ", "seed-pw-12345")
+    assert created is True
+
+    row = await queries.find_by_email(conn, email="seed-admin3@example.com")
+    assert row is not None
+
+    second = await ensure_admin_seeded(conn, "seed-admin3@example.com", "seed-pw-12345")
+    assert second is False
