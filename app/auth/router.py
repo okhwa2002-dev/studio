@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,3 +110,61 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
 
     _set_auth_cookies(response, access_token, refresh_token)
     return {"id": row["id"], "email": row["email"], "role": row["role"]}
+
+
+@router.post("/refresh")
+async def refresh(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    token = request.cookies.get("refresh_token")
+    if not token:
+        raise Errors.unauthorized()
+
+    conn = await raw_connection(db)
+    token_hash = hash_refresh_token(token)
+    row = await queries.find_by_token_hash(conn, token_hash=token_hash)
+    now = now_local()
+
+    if row is None:
+        raise Errors.unauthorized("유효하지 않은 토큰입니다.")
+    if row["revoked_at"] is not None:
+        # 이미 회전되어 폐기된 토큰이 재사용됨 → 탈취 의심, 해당 사용자의 모든 세션 폐기
+        await queries.revoke_all_for_user(conn, user_id=row["user_id"], revoked_at=now, updated_at=now)
+        await db.commit()
+        raise Errors.unauthorized("토큰이 재사용되어 모든 세션을 종료했습니다. 다시 로그인해주세요.")
+    if row["expires_at"] < now:
+        raise Errors.unauthorized("토큰이 만료되었습니다.")
+
+    user_row = await queries.find_by_id(conn, id=row["user_id"])
+    if user_row is None or user_row["status"] != "active":
+        raise Errors.unauthorized()
+
+    await queries.revoke_by_id(conn, id=row["id"], revoked_at=now, updated_at=now)
+    new_refresh_token = generate_refresh_token()
+    await queries.insert_refresh_token(
+        conn,
+        user_id=user_row["id"],
+        token_hash=hash_refresh_token(new_refresh_token),
+        expires_at=now + timedelta(days=REFRESH_TOKEN_DAYS),
+        created_at=now,
+        updated_at=now,
+    )
+    await db.commit()
+
+    access_token = create_access_token(user_row["id"], user_row["role"])
+    _set_auth_cookies(response, access_token, new_refresh_token)
+    return {"id": user_row["id"]}
+
+
+@router.post("/logout")
+async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    token = request.cookies.get("refresh_token")
+    if token:
+        conn = await raw_connection(db)
+        row = await queries.find_by_token_hash(conn, token_hash=hash_refresh_token(token))
+        if row is not None and row["revoked_at"] is None:
+            now = now_local()
+            await queries.revoke_by_id(conn, id=row["id"], revoked_at=now, updated_at=now)
+            await db.commit()
+
+    response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
+    return {"status": "ok"}
