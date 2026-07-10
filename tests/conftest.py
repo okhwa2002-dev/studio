@@ -1,11 +1,12 @@
 import pytest
 import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import SQLModel
 from testcontainers.postgres import PostgresContainer
 
 import app.models  # noqa: F401  (모든 모델을 metadata에 등록)
-from app.db import make_engine
+from app.db import get_db, make_engine
 
 
 @pytest.fixture(scope="session")
@@ -37,3 +38,17 @@ async def db_session(db_engine) -> AsyncSession:
         yield session
     await trans.rollback()
     await connection.close()
+
+
+@pytest_asyncio.fixture
+async def client(db_session):
+    async def _override_get_db():
+        yield db_session
+
+    from app.main import app
+
+    app.dependency_overrides[get_db] = _override_get_db
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    app.dependency_overrides.clear()
