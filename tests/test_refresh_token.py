@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+from sqlalchemy import BigInteger
+
 from app.db import raw_connection
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
@@ -89,3 +91,11 @@ async def test_revoke_all_for_user_revokes_every_active_token(db_session):
     row2 = await queries.find_by_token_hash(conn, token_hash="all-hash-2")
     assert row1["revoked_at"] is not None
     assert row2["revoked_at"] is not None
+
+
+def test_user_id_is_bigint_matching_users_pk():
+    # user_id는 users.id(BIGINT)를 참조하는 FK이므로, 컬럼 타입도 BIGINT여야 한다
+    # (Integer로 두면 21억을 넘는 id를 참조 못 함 — app/models/base.py의
+    # created_by/updated_by와 동일한 규칙, tests/test_base_entity.py 참고).
+    table = RefreshToken.__table__
+    assert isinstance(table.c.user_id.type, BigInteger)

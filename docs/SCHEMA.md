@@ -47,12 +47,12 @@
 | `id` / `created_at` / `updated_at` | — | — | — | `BaseEntity` 공통 컬럼 |
 | `created_by` | BIGINT | NULL 허용 | 없음 | FK 없음 (`BaseEntity` 그대로) |
 | `updated_by` | BIGINT | NULL 허용 | 없음 | FK 없음 (`BaseEntity` 그대로) |
-| `user_id` | INTEGER | NOT NULL | 없음 | FK → `users.id`, INDEX |
+| `user_id` | BIGINT | NOT NULL | 없음 | FK → `users.id`, INDEX |
 | `token_hash` | VARCHAR | NOT NULL | 없음 | UNIQUE, INDEX — SHA-256 해시값(원문 저장 안 함) |
 | `expires_at` | TIMESTAMP(tz 없음) | NOT NULL | 없음 | 만료 일시 |
 | `revoked_at` | TIMESTAMP(tz 없음) | NULL 허용 | 없음 | 폐기(회전/로그아웃) 처리 일시, 미폐기 시 NULL |
 
-`user_id`는 모델에서 `int`(별도 `sa_type` 지정 없음)로 선언되어 SQLModel이 `INTEGER`로 매핑한다 — `users.id`(BIGINT)를 참조하는 FK지만 컬럼 타입 자체는 BIGINT가 아니다(Plan 2 Task 3 브리프의 명시된 코드를 그대로 따름). PostgreSQL은 int4/int8 간 FK 제약을 허용하므로 동작에는 문제가 없지만, 향후 매우 큰 `user_id` 값이 필요할 가능성이 있다면 `BigInteger`로 맞추는 것을 고려할 것.
+`user_id`는 `sa_type=BigInteger`로 선언되어 `users.id`(BIGINT)와 동일한 타입의 FK 컬럼이다.
 
 ## 지운 테이블
 

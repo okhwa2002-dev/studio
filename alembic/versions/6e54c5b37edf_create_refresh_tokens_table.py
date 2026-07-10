@@ -28,7 +28,7 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.DateTime(), server_default=sa.text("timezone('Asia/Seoul', now())"), nullable=False, comment='수정일시 (로컬 벽시계 시각, 수정 시 갱신)'),
     sa.Column('created_by', sa.BigInteger(), nullable=True, comment='생성자'),
     sa.Column('updated_by', sa.BigInteger(), nullable=True, comment='수정자'),
-    sa.Column('user_id', sa.Integer(), nullable=False, comment='리프레시 토큰 소유자 (FK: users.id)'),
+    sa.Column('user_id', sa.BigInteger(), nullable=False, comment='리프레시 토큰 소유자 (FK: users.id)'),
     sa.Column('token_hash', sqlmodel.sql.sqltypes.AutoString(), nullable=False, comment='리프레시 토큰의 SHA-256 해시값 (원문 저장 안 함)'),
     sa.Column('expires_at', sa.DateTime(), nullable=False, comment='만료 일시'),
     sa.Column('revoked_at', sa.DateTime(), nullable=True, comment='폐기(회전/로그아웃) 처리 일시, 미폐기 시 NULL'),
