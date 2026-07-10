@@ -49,6 +49,18 @@ async def test_require_admin_rejects_non_admin(client, db_session):
     assert resp.status_code == 403
 
 
+async def test_current_user_excludes_password_hash(client, db_session):
+    @app.get("/_whoami3")
+    async def _whoami3(user: dict = Depends(current_user)):
+        return {"keys": sorted(user.keys())}
+
+    await _login(client, db_session, "no-hash-leak@example.com")
+
+    resp = await client.get("/_whoami3")
+    assert resp.status_code == 200
+    assert "password_hash" not in resp.json()["keys"]
+
+
 async def test_require_admin_allows_admin(client, db_session):
     @app.get("/_admin_only2")
     async def _admin_only2(user: dict = Depends(require_admin)):

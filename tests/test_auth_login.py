@@ -48,6 +48,20 @@ async def test_login_rejects_pending_user(client, db_session):
     assert resp.status_code == 403
 
 
+async def test_login_succeeds_with_email_differing_in_case_and_whitespace(client, db_session):
+    """등록 시 정규화(strip/lower)된 이메일이 저장되므로, 로그인도 동일하게
+    정규화한 뒤 조회해야 대소문자/공백이 다른 이메일 입력으로도 로그인할 수 있다.
+    """
+    await _create_user(db_session, "casetest@example.com", "pw12345")
+
+    resp = await client.post(
+        "/auth/login",
+        json={"email": "  CaseTest@Example.com  ", "password": "pw12345"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["email"] == "casetest@example.com"
+
+
 async def test_login_unknown_email_still_runs_password_verification(client, monkeypatch):
     """타이밍 사이드채널 회귀 테스트.
 

@@ -22,7 +22,9 @@ async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> 
     row = await queries.find_by_id(conn, id=int(payload["sub"]))
     if row is None or row["status"] != "active":
         raise Errors.unauthorized("인증 정보가 유효하지 않습니다.")
-    return dict(row)
+    user = dict(row)
+    user.pop("password_hash", None)
+    return user
 
 
 def require_admin(user: dict = Depends(current_user)) -> dict:

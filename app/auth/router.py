@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+import asyncpg
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,21 +38,28 @@ class RegisterRequest(BaseModel):
 
 @router.post("/register", status_code=201)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    email = body.email.strip().lower()
     conn = await raw_connection(db)
-    existing = await queries.find_by_email(conn, email=body.email)
+    existing = await queries.find_by_email(conn, email=email)
     if existing is not None:
         raise Errors.conflict("이미 등록된 이메일입니다.")
 
     now = now_local()
-    user_id = await queries.insert_user(
-        conn,
-        email=body.email,
-        password_hash=hash_password(body.password),
-        role="member",
-        status="pending",
-        created_at=now,
-        updated_at=now,
-    )
+    try:
+        user_id = await queries.insert_user(
+            conn,
+            email=email,
+            password_hash=hash_password(body.password),
+            role="member",
+            status="pending",
+            created_at=now,
+            updated_at=now,
+        )
+    except asyncpg.exceptions.UniqueViolationError:
+        # find_by_email 확인 이후, insert 사이의 경합으로 동시에 같은 이메일이
+        # 등록된 경우(동시 요청/빠른 중복 제출). DB 유니크 제약이 잡아준 것을
+        # 500이 아닌 409 CONFLICT로 변환한다.
+        raise Errors.conflict("이미 등록된 이메일입니다.")
     await db.commit()
     return {"id": user_id, "status": "pending"}
 
@@ -84,7 +92,8 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
 @router.post("/login")
 async def login(body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     conn = await raw_connection(db)
-    row = await queries.find_by_email(conn, email=body.email)
+    email = body.email.strip().lower()
+    row = await queries.find_by_email(conn, email=email)
     if row is None:
         # 더미 해시로라도 verify_password를 호출해 존재하는 계정과 동일한
         # 연산 비용을 지불한다(결과는 사용하지 않음). 타이밍 사이드채널 방지.
