@@ -21,6 +21,14 @@ from app.utils.time import now_local
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# 이메일이 존재하지 않는 경우에도 verify_password(Argon2, 의도적으로 느림)를 호출해
+# 동일한 연산 비용을 지불하기 위한 더미 해시. 이게 없으면 "이메일 없음" 응답이
+# "이메일은 있으나 비밀번호 틀림" 응답보다 눈에 띄게 빨라져, 응답 시간을 통해
+# 등록된 이메일을 추측하는 타이밍 사이드채널 공격이 가능해진다.
+# (주의: 아래 로그인 로직에서 `row is None or not verify_password(...)`처럼
+#  단축 평가로 "단순화"하면 이 방어가 무력화되니 절대 합치지 말 것.)
+_DUMMY_PASSWORD_HASH = hash_password("dummy-password-for-timing-safety")
+
 
 class RegisterRequest(BaseModel):
     email: str
@@ -77,7 +85,12 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
 async def login(body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     conn = await raw_connection(db)
     row = await queries.find_by_email(conn, email=body.email)
-    if row is None or not verify_password(body.password, row["password_hash"]):
+    if row is None:
+        # 더미 해시로라도 verify_password를 호출해 존재하는 계정과 동일한
+        # 연산 비용을 지불한다(결과는 사용하지 않음). 타이밍 사이드채널 방지.
+        verify_password(body.password, _DUMMY_PASSWORD_HASH)
+        raise Errors.unauthorized("이메일 또는 비밀번호가 올바르지 않습니다.")
+    if not verify_password(body.password, row["password_hash"]):
         raise Errors.unauthorized("이메일 또는 비밀번호가 올바르지 않습니다.")
     if row["status"] != "active":
         raise Errors.forbidden("관리자 승인 대기 중이거나 비활성화된 계정입니다.")

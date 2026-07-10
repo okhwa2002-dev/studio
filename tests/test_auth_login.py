@@ -1,3 +1,4 @@
+import app.auth.router as auth_router
 from app.auth.security import hash_password
 from app.models.user import User
 
@@ -45,3 +46,29 @@ async def test_login_rejects_pending_user(client, db_session):
         "/auth/login", json={"email": "pending@example.com", "password": "pw12345"}
     )
     assert resp.status_code == 403
+
+
+async def test_login_unknown_email_still_runs_password_verification(client, monkeypatch):
+    """타이밍 사이드채널 회귀 테스트.
+
+    `row is None or not verify_password(...)`처럼 단축 평가로 되돌리면
+    이메일이 존재하지 않을 때 verify_password가 호출되지 않아, 응답 시간
+    차이로 이메일 등록 여부를 추측할 수 있게 된다. 이 테스트는 실제 소요
+    시간을 재는 대신(CI에서 불안정), 존재하지 않는 이메일로 로그인해도
+    verify_password가 반드시 호출되는지를 검증한다.
+    """
+    calls = []
+    original_verify_password = auth_router.verify_password
+
+    def spy_verify_password(password, password_hash):
+        calls.append((password, password_hash))
+        return original_verify_password(password, password_hash)
+
+    monkeypatch.setattr(auth_router, "verify_password", spy_verify_password)
+
+    resp = await client.post(
+        "/auth/login", json={"email": "definitely-does-not-exist@example.com", "password": "whatever"}
+    )
+    assert resp.status_code == 401
+    assert len(calls) == 1
+    assert calls[0][1] == auth_router._DUMMY_PASSWORD_HASH
