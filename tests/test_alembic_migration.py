@@ -43,4 +43,5 @@ def test_alembic_upgrade_head_applies_cleanly_on_fresh_db(monkeypatch):
     # error_codes는 이력상 생성된 뒤 삭제되었으므로(에러 처리가 소스 관리
     # 방식으로 바뀜) head에는 존재하지 않아야 한다.
     assert "error_codes" not in tables
+    assert "users" in tables
     assert "alembic_version" in tables
