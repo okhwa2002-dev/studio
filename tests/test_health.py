@@ -1,22 +1,17 @@
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from app.db import get_db
 from app.main import app
-from app.models.error_code import ErrorCode
 from app.utils.errors import AppError
 
 
 @pytest_asyncio.fixture
-async def client(db_session):
-    async def _override_get_db():
-        yield db_session
-
-    app.dependency_overrides[get_db] = _override_get_db
-    transport = ASGITransport(app=app)
+async def client():
+    # raise_app_exceptions=False: 핸들러가 처리한 500 응답도 그대로 받아서
+    # 검증할 수 있도록 한다(기본값 True면 예외가 테스트 쪽으로 다시 던져짐).
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
-    app.dependency_overrides.clear()
 
 
 async def test_health_ok(client):
@@ -25,33 +20,21 @@ async def test_health_ok(client):
     assert resp.json() == {"status": "ok"}
 
 
-async def test_app_error_uses_resolver(client, db_session):
-    db_session.add(ErrorCode(code="DEFAULT", message="기본 오류", http_status=400, is_default=True, is_active=True))
-    db_session.add(ErrorCode(code="BOOM", message="터짐", http_status=418, is_default=False, is_active=True))
-    await db_session.commit()
-
+async def test_app_error_returns_its_own_code_and_message(client):
     @app.get("/_boom")
     async def _boom():
-        raise AppError("BOOM")
+        raise AppError(418, "BOOM", "터짐")
 
     resp = await client.get("/_boom")
     assert resp.status_code == 418
     assert resp.json() == {"code": "BOOM", "message": "터짐"}
 
 
-async def test_app_error_falls_back_to_hardcoded_when_db_unavailable(client):
-    # get_db 자체가 실패하는 상황(DB 다운)을 재현한다. 이 경우에도 응답은
-    # 반드시 {"code","message"} 형식이어야 하며, 일반 500 평문 응답이면 안 된다.
-    async def _broken_get_db():
-        raise RuntimeError("db is down")
-        yield  # pragma: no cover - unreachable, keeps this an async generator
+async def test_unhandled_exception_falls_back_to_default_error(client):
+    @app.get("/_unexpected")
+    async def _unexpected():
+        raise RuntimeError("something truly unexpected")
 
-    app.dependency_overrides[get_db] = _broken_get_db
-
-    @app.get("/_boom_db_down")
-    async def _boom_db_down():
-        raise AppError("WHATEVER")
-
-    resp = await client.get("/_boom_db_down")
+    resp = await client.get("/_unexpected")
     assert resp.status_code == 500
     assert resp.json() == {"code": "UNKNOWN_ERROR", "message": "알 수 없는 오류가 발생했습니다."}

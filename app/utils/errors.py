@@ -1,43 +1,58 @@
 from dataclasses import dataclass
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db import raw_connection
-from app.queries import queries
-
 
 class AppError(Exception):
-    def __init__(self, code: str, message: str | None = None):
+    """업무단(각 도메인 로직)이 status_code·code·message를 직접 지정해서 던지는 예외.
+
+    에러 응답에 실릴 값은 이 예외를 던지는 쪽이 책임지고 채운다. DB 조회는 하지 않는다.
+    """
+
+    def __init__(self, status_code: int, code: str, message: str):
+        self.status_code = status_code
         self.code = code
         self.message = message
-        super().__init__(code)
+        super().__init__(message)
+
+
+class Errors:
+    """자주 쓰는 AppError를 미리 정의해 둔 헬퍼. 필요하면 AppError를 직접 던져도 된다."""
+
+    @staticmethod
+    def not_found(message: str = "리소스를 찾을 수 없습니다.") -> AppError:
+        return AppError(404, "RESOURCE_NOT_FOUND", message)
+
+    @staticmethod
+    def bad_request(message: str = "잘못된 요청입니다.") -> AppError:
+        return AppError(400, "BAD_REQUEST", message)
+
+    @staticmethod
+    def conflict(message: str = "이미 존재하는 리소스입니다.") -> AppError:
+        return AppError(409, "CONFLICT", message)
+
+    @staticmethod
+    def forbidden(message: str = "접근 권한이 없습니다.") -> AppError:
+        return AppError(403, "FORBIDDEN", message)
+
+    @staticmethod
+    def unauthorized(message: str = "인증이 필요합니다.") -> AppError:
+        return AppError(401, "UNAUTHORIZED", message)
+
+    @staticmethod
+    def invalid_id(message: str = "유효하지 않은 ID입니다.") -> AppError:
+        return AppError(400, "INVALID_ID", message)
 
 
 @dataclass(frozen=True)
 class ResolvedError:
     code: str
     message: str
-    http_status: int
+    status_code: int
 
 
-HARDCODED_FALLBACK = ResolvedError(
+# AppError가 아닌, 정말 예상 못한 예외가 발생했을 때만 쓰는 디폴트 에러.
+# DB가 아니라 소스 코드에 고정된 값이다.
+DEFAULT_ERROR = ResolvedError(
     code="UNKNOWN_ERROR",
     message="알 수 없는 오류가 발생했습니다.",
-    http_status=500,
+    status_code=500,
 )
-
-
-async def resolve_error(
-    session: AsyncSession, code: str, message: str | None = None
-) -> ResolvedError:
-    conn = await raw_connection(session)
-
-    row = await queries.find_active_by_code(conn, code=code)
-    if row is not None:
-        return ResolvedError(row["code"], message or row["message"], row["http_status"])
-
-    default = await queries.find_default(conn)
-    if default is not None:
-        return ResolvedError(default["code"], message or default["message"], default["http_status"])
-
-    return HARDCODED_FALLBACK
