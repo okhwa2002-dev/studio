@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -37,3 +39,14 @@ def create_access_token(user_id: int, role: str) -> str:
 
 def decode_access_token(token: str) -> dict:
     return jwt.decode(token, get_settings().jwt_secret, algorithms=["HS256"])
+
+
+REFRESH_TOKEN_DAYS = 14
+
+
+def generate_refresh_token() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
