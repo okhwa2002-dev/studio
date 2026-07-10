@@ -4,7 +4,13 @@ from typing import Optional
 from sqlalchemy import BigInteger
 from sqlmodel import Field
 
-from app.models.base import BaseEntity
+from app.models.base import (
+    BaseEntity,
+    created_at_field,
+    created_by_field,
+    updated_at_field,
+    updated_by_field,
+)
 
 
 class User(BaseEntity, table=True):
@@ -37,17 +43,12 @@ class User(BaseEntity, table=True):
         nullable=True,
         sa_column_kwargs={"comment": "승인/거절한 관리자 (FK: users.id 자기참조)"},
     )
-    created_by: Optional[int] = Field(
-        default=None,
-        sa_type=BigInteger,
-        foreign_key="users.id",
-        nullable=True,
-        sa_column_kwargs={"comment": "생성자 (FK: users.id 자기참조) — 자율가입은 NULL"},
+
+    created_at: Optional[datetime] = created_at_field()
+    created_by: Optional[int] = created_by_field(
+        foreign_key="users.id", comment="생성자 (FK: users.id 자기참조) — 자율가입은 NULL"
     )
-    updated_by: Optional[int] = Field(
-        default=None,
-        sa_type=BigInteger,
-        foreign_key="users.id",
-        nullable=True,
-        sa_column_kwargs={"comment": "수정자 (FK: users.id 자기참조)"},
+    updated_at: Optional[datetime] = updated_at_field()
+    updated_by: Optional[int] = updated_by_field(
+        foreign_key="users.id", comment="수정자 (FK: users.id 자기참조)"
     )

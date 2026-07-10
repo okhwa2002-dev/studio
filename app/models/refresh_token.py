@@ -4,7 +4,13 @@ from typing import Optional
 from sqlalchemy import BigInteger
 from sqlmodel import Field
 
-from app.models.base import BaseEntity
+from app.models.base import (
+    BaseEntity,
+    created_at_field,
+    created_by_field,
+    updated_at_field,
+    updated_by_field,
+)
 
 
 class RefreshToken(BaseEntity, table=True):
@@ -27,3 +33,8 @@ class RefreshToken(BaseEntity, table=True):
         default=None,
         sa_column_kwargs={"comment": "폐기(회전/로그아웃) 처리 일시, 미폐기 시 NULL"},
     )
+
+    created_at: Optional[datetime] = created_at_field()
+    created_by: Optional[int] = created_by_field()
+    updated_at: Optional[datetime] = updated_at_field()
+    updated_by: Optional[int] = updated_by_field()

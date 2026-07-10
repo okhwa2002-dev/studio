@@ -1,15 +1,27 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import Optional
 
 from sqlalchemy import BigInteger
 from sqlmodel import Field
 
-from app.models.base import BaseEntity
+from app.models.base import (
+    BaseEntity,
+    created_at_field,
+    created_by_field,
+    updated_at_field,
+    updated_by_field,
+)
 from app.utils.time import now_local
 
 
 class _Sample(BaseEntity, table=True):
     __tablename__ = "sample_task3"
     name: str = Field()
+
+    created_at: Optional[datetime] = created_at_field()
+    created_by: Optional[int] = created_by_field()
+    updated_at: Optional[datetime] = updated_at_field()
+    updated_by: Optional[int] = updated_by_field()
 
 
 async def test_base_entity_defaults(db_session):
@@ -66,3 +78,9 @@ def test_audit_columns_are_bigint_matching_users_pk():
     table = _Sample.__table__
     assert isinstance(table.c.created_by.type, BigInteger)
     assert isinstance(table.c.updated_by.type, BigInteger)
+
+
+def test_table_column_order_is_id_business_then_audit():
+    # 테이블 생성 규칙: id, 업무 컬럼(name), 그다음 생성/수정 감사 컬럼 순서여야 한다.
+    columns = list(_Sample.__table__.columns.keys())
+    assert columns == ["id", "name", "created_at", "created_by", "updated_at", "updated_by"]
