@@ -14,3 +14,18 @@ SELECT id, email, password_hash, role, status, approved_at, approved_by,
        created_at, updated_at, created_by, updated_by
 FROM users
 WHERE id = :id;
+
+-- name: list_by_status
+SELECT id, email, role, status, approved_at, approved_by, created_at, updated_at
+FROM users
+WHERE status = :status
+ORDER BY created_at ASC;
+
+-- name: update_status!
+UPDATE users
+SET status = :status,
+    approved_at = :approved_at,
+    approved_by = :approved_by,
+    updated_at = :updated_at,
+    updated_by = :updated_by
+WHERE id = :id;

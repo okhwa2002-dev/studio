@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api.health import router as health_router
+from app.auth.admin_router import router as admin_users_router
 from app.auth.router import router as auth_router
 from app.utils.errors import DEFAULT_ERROR, AppError
 from app.utils.logging import configure_logging
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Studio")
 app.include_router(health_router)
 app.include_router(auth_router)
+app.include_router(admin_users_router)
 
 
 @app.exception_handler(AppError)
