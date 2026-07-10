@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     log_dir: str = "D:/workspace/ok2020/log/studio"
     cors_origins: list[str] = []
     secure_cookies: bool = False
+    admin_email: str | None = None
+    admin_password: str | None = None
 
 
 @lru_cache

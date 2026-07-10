@@ -8,8 +8,9 @@
 2. 환경 파일: `cp .env.example .env` 후 값 확인 (DB 포트는 기본 5437)
 3. DB 기동: `docker compose up -d db`
 4. 마이그레이션: `uv run alembic upgrade head`
-5. 서버 실행: `uv run uvicorn app.main:app --reload`
-6. 확인: http://localhost:8000/health → `{"status":"ok"}`
+5. 최초 관리자 계정 생성(최초 1회): `uv run python scripts/seed_admin.py`
+6. 서버 실행: `uv run uvicorn app.main:app --reload`
+7. 확인: http://localhost:8000/health → `{"status":"ok"}`
 
 ## 테스트
 
