@@ -46,4 +46,4 @@ async def test_me_does_not_leak_password_hash(client, db_session):
 
     resp = await client.get("/auth/me")
     assert resp.status_code == 200
-    assert "password_hash" not in resp.json()
+    assert set(resp.json().keys()) == {"id", "email", "role"}
