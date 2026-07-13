@@ -48,15 +48,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response = await send(path, init)
 
   if (response.status === 401 && !NO_REFRESH_PATHS.includes(path)) {
+    let refreshed: Response | null = null
     try {
-      const refreshed = await send('/auth/refresh', { method: 'POST' })
-      if (refreshed.ok) {
-        // 재시도는 딱 한 번. 재귀하지 않으므로 무한 루프가 생길 수 없다.
-        response = await send(path, init)
-      }
-      // 갱신이 실패하면 원래의 401을 그대로 아래로 흘려보낸다 → 호출자가 로그아웃 상태로 처리.
+      refreshed = await send('/auth/refresh', { method: 'POST' })
     } catch {
-      // 갱신 실패는 종류를 가리지 않고 원래의 401로 귀결 → 호출자가 로그아웃 상태로 처리.
+      // 갱신 시도가 네트워크 오류로 실패해도 원래의 401을 그대로 흘려보낸다
+      // → 호출자가 로그아웃 상태로 처리. (갱신 실패는 종류를 가리지 않는다.)
+    }
+
+    if (refreshed?.ok) {
+      // 재시도는 딱 한 번. 재귀하지 않으므로 무한 루프가 생길 수 없다.
+      // 여기서의 실패는 갱신이 성공한 뒤의 진짜 실패이므로 삼키지 않고 그대로 던진다.
+      response = await send(path, init)
     }
   }
 
