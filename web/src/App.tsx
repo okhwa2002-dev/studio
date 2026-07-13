@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './lib/auth'
 import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
 import { PendingApproval } from './pages/PendingApproval'
+import { Register } from './pages/Register'
 import { RequireAuth } from './routes/RequireAuth'
 import { RequireGuest } from './routes/RequireGuest'
 
@@ -23,6 +24,7 @@ function Routing() {
     <Routes>
       <Route element={<RequireGuest />}>
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
       </Route>
       <Route path="/pending" element={<PendingApproval />} />
       <Route element={<RequireAuth />}>
