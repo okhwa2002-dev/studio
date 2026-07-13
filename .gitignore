@@ -22,3 +22,7 @@ storage/
 # os
 .DS_Store
 Thumbs.db
+
+# 프론트
+web/node_modules/
+web/dist/

@@ -12,6 +12,17 @@
 6. 서버 실행: `uv run uvicorn app.main:app --reload`
 7. 확인: http://localhost:8000/health → `{"status":"ok"}`
 
+## 프론트 실행
+
+백엔드가 뜬 상태에서, 별도 터미널에서:
+
+1. 의존성 설치(최초 1회): `cd web && npm install`
+2. 개발 서버 실행: `npm run dev`
+3. 접속: http://localhost:5173
+
+Vite dev 서버가 `/auth`, `/admin`, `/health` 요청을 `http://localhost:8000`으로 프록시한다.
+브라우저 입장에선 동일 출처이므로 CORS 설정 없이 httpOnly 인증 쿠키가 그대로 동작한다.
+
 ## 테스트
 
 `uv run pytest` (Docker 데몬 실행 필요 — testcontainers가 임시 Postgres 기동)
