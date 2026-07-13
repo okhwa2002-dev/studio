@@ -21,6 +21,22 @@ const NETWORK_MESSAGE = '서버에 연결할 수 없습니다.'
 // - /auth/logout: 이미 로그아웃 중이다.
 const NO_REFRESH_PATHS = ['/auth/login', '/auth/refresh', '/auth/logout']
 
+// 백엔드의 /auth/refresh는 리프레시 토큰을 회전시키며 재사용을 탈취로 간주한다
+// (이미 폐기된 토큰이 다시 제시되면 해당 사용자의 모든 세션을 폐기한다).
+// StrictMode의 effect 이중 실행 등으로 401이 동시에 여러 건 발생하면, 각 요청이
+// 같은 리프레시 쿠키를 들고 개별적으로 /auth/refresh를 호출하게 되어 뒤에 도착한
+// 쪽이 앞선 쪽이 이미 회전시킨 토큰을 재사용하는 꼴이 되고, 스스로 이 경보를
+// 울려 모든 세션을 날려버릴 수 있다. 그래서 동시 요청은 진행 중인 갱신 하나를
+// 공유하고, 실제 네트워크 호출은 한 번만 나가도록 한다.
+let refreshInFlight: Promise<Response> | null = null
+
+function refreshOnce(): Promise<Response> {
+  refreshInFlight ??= send('/auth/refresh', { method: 'POST' }).finally(() => {
+    refreshInFlight = null
+  })
+  return refreshInFlight
+}
+
 async function send(path: string, init?: RequestInit): Promise<Response> {
   try {
     return await fetch(path, {
@@ -50,10 +66,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (response.status === 401 && !NO_REFRESH_PATHS.includes(path)) {
     let refreshed: Response | null = null
     try {
-      refreshed = await send('/auth/refresh', { method: 'POST' })
+      refreshed = await refreshOnce()
     } catch {
       // 갱신 시도가 네트워크 오류로 실패해도 원래의 401을 그대로 흘려보낸다
       // → 호출자가 로그아웃 상태로 처리. (갱신 실패는 종류를 가리지 않는다.)
+      // refreshInFlight는 공유 프로미스이므로, 동시에 대기 중이던 다른 호출자들도
+      // 각자 이 catch로 떨어져 자신의 원래 401을 그대로 던지게 된다.
     }
 
     if (refreshed?.ok) {

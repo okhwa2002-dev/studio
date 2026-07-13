@@ -44,8 +44,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = async () => {
-    await api.post('/auth/logout')
-    setUser(null)
+    // 요청이 실패해도(예: 개발 중 서버 재기동) 로컬 세션 상태는 정리한다.
+    try {
+      await api.post('/auth/logout')
+    } finally {
+      setUser(null)
+    }
   }
 
   return (

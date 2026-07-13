@@ -8,7 +8,14 @@ export function RequireAuth() {
 
   if (!user) {
     // 원래 가려던 경로를 기억해 두고, 로그인 성공 후 그곳으로 돌려보낸다.
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+    // 쿼리스트링·해시까지 포함해야 딥링크(예: /dashboard?tab=x)가 보존된다.
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location.pathname + location.search + location.hash }}
+      />
+    )
   }
   return <Outlet />
 }
