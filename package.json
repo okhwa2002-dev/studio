@@ -1,0 +1,13 @@
+{
+  "name": "studio",
+  "private": true,
+  "description": "루트에서 바로 실행하기 위한 위임용 스크립트. 실제 프론트 패키지는 web/package.json.",
+  "scripts": {
+    "dev": "npm --prefix web run dev",
+    "dev:api": "npm --prefix web run dev:api",
+    "dev:web": "npm --prefix web run dev:web",
+    "test": "uv run pytest",
+    "build": "npm --prefix web run build",
+    "lint": "npm --prefix web run lint"
+  }
+}

@@ -4,21 +4,43 @@
 
 ## 개발 실행
 
-1. 의존성 설치: `uv sync`
-2. 환경 파일: `cp .env.example .env` 후 값 확인 (DB 포트는 기본 5437)
-3. DB 기동: `docker compose up -d db`
-4. 마이그레이션: `uv run alembic upgrade head`
-5. 최초 관리자 계정 생성(최초 1회): `uv run python scripts/seed_admin.py`
-6. 서버 실행: `uv run uvicorn app.main:app --reload`
-7. 확인: http://localhost:8000/health → `{"status":"ok"}`
+### 최초 1회만
 
-## 프론트 실행
+```
+uv sync                                  # 백엔드 의존성
+cp .env.example .env                     # 환경 파일 (DB 포트는 기본 5437)
+cd web && npm install                    # 프론트 의존성
+```
 
-백엔드가 뜬 상태에서, 별도 터미널에서:
+```
+docker compose up -d db                  # DB 기동
+uv run alembic upgrade head              # 마이그레이션
+uv run python scripts/seed_admin.py      # 최초 관리자 계정 (.env의 ADMIN_EMAIL/ADMIN_PASSWORD)
+```
 
-1. 의존성 설치(최초 1회): `cd web && npm install`
-2. 개발 서버 실행: `npm run dev`
-3. 접속: http://localhost:5173
+### 매번 (개발 서버)
+
+프로젝트 루트에서:
+
+```
+npm run dev
+```
+
+이 한 줄이 **DB(docker) → 백엔드(:8000) → 프론트(:5173)** 를 모두 띄운다.
+로그는 `api` / `web` 접두사로 구분되고, **Ctrl+C 한 번에 둘 다 종료**된다.
+
+접속: **http://localhost:5173** (`:8000`이 아니다 — API 요청은 Vite가 프록시로 넘긴다)
+
+모든 명령은 루트에서 실행한다.
+
+| 명령 | 하는 일 |
+|------|---------|
+| `npm run dev` | DB + 백엔드 + 프론트 전부 |
+| `npm run dev:web` | 프론트만 |
+| `npm run dev:api` | 백엔드만 |
+| `npm test` | 백엔드 테스트 (pytest) |
+| `npm run build` | 프론트 프로덕션 빌드 |
+| `npm run lint` | 프론트 린트 (oxlint) |
 
 Vite dev 서버가 `/auth`, `/admin/users`, `/health` 요청을 `http://localhost:8000`으로 프록시한다.
 브라우저 입장에선 동일 출처이므로 CORS 설정 없이 httpOnly 인증 쿠키가 그대로 동작한다.
@@ -35,4 +57,4 @@ Vite dev 서버가 `/auth`, `/admin/users`, `/health` 요청을 `http://localhos
 
 ## 테스트
 
-`uv run pytest` (Docker 데몬 실행 필요 — testcontainers가 임시 Postgres 기동)
+`npm test` (= `uv run pytest`). Docker 데몬이 떠 있어야 한다 — testcontainers가 임시 Postgres를 띄운다.
