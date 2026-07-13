@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.dependencies import current_user
 from app.auth.security import (
     ACCESS_TOKEN_MINUTES,
     REFRESH_TOKEN_DAYS,
@@ -177,3 +178,10 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
     return {"status": "ok"}
+
+
+@router.get("/me")
+async def me(user: dict = Depends(current_user)):
+    # current_user가 쿠키 검증·상태 확인·password_hash 제거까지 이미 수행한다.
+    # 여기서는 프론트가 실제로 쓰는 필드만 골라 내보낸다(감사 컬럼·approved_by 등 미노출).
+    return {"id": user["id"], "email": user["email"], "role": user["role"]}
