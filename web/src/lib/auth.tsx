@@ -4,7 +4,7 @@ import { api } from './api'
 export type User = {
   id: number
   email: string
-  role: 'member' | 'admin'
+  role: 'MEMBER' | 'ADMIN'
 }
 
 type AuthState = {
