@@ -14,7 +14,7 @@ cd web && npm install                    # 프론트 의존성
 
 ```
 docker compose up -d db                  # DB 기동
-uv run alembic upgrade head              # 마이그레이션
+npm run migrate                          # 마이그레이션
 npm run seed:admin                       # 최초 관리자 계정 (.env의 ADMIN_EMAIL/ADMIN_PASSWORD)
 npm run seed:sample                      # (선택) 개발용 샘플 사용자 8명 — 비밀번호는 모두 password123
 ```
@@ -42,6 +42,8 @@ npm run dev
 | `npm test` | 백엔드 테스트 (pytest) |
 | `npm run build` | 프론트 프로덕션 빌드 |
 | `npm run lint` | 프론트 린트 (oxlint) |
+| `npm run migrate` | 마이그레이션 적용 (alembic upgrade head) |
+| `npm run migrate:down` | 마이그레이션 한 단계 되돌리기 |
 | `npm run seed:admin` | 최초 관리자 계정 생성 |
 | `npm run seed:sample` | 개발용 샘플 사용자 8명 (로컬 DB에서만 동작) |
 

@@ -7,6 +7,7 @@ from app.auth.seed_sample_users import (
 from app.constants import UserStatus
 from app.db import raw_connection
 from app.queries import queries
+from app.utils.time import now_local
 
 
 async def _count_by_status(conn, status: UserStatus) -> int:
@@ -58,6 +59,33 @@ async def test_pending_sample_user_cannot_log_in(client, db_session):
         json={"email": "sample-pending1@example.com", "password": SAMPLE_PASSWORD},
     )
     assert resp.status_code == 403
+
+
+async def test_reseed_does_not_revert_approved_sample_user(db_session):
+    # 모듈 docstring의 약속: 관리자가 이미 승인해 둔 샘플 계정은 재시드로도
+    # 상태가 되돌아가지 않는다. 이 테스트가 없으면 "재시드 시 상태 초기화"
+    # 같은 미래의 변경이 이 약속을 조용히 깨도 아무도 알아채지 못한다.
+    conn = await raw_connection(db_session)
+    await ensure_sample_users_seeded(conn)
+
+    pending = await queries.find_by_email(conn, email="sample-pending1@example.com")
+    now = now_local()
+    await queries.update_status(
+        conn,
+        id=pending["id"],
+        status=UserStatus.ACTIVE,
+        approved_at=now,
+        approved_by=pending["id"],
+        updated_at=now,
+        updated_by=pending["id"],
+    )
+    await db_session.commit()
+
+    second = await ensure_sample_users_seeded(conn)
+    assert second == 0
+
+    approved = await queries.find_by_email(conn, email="sample-pending1@example.com")
+    assert approved["status"] == UserStatus.ACTIVE
 
 
 def test_is_local_database_accepts_local_hosts():

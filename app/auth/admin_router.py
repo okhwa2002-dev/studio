@@ -23,7 +23,7 @@ async def list_users(
 
 
 async def _set_status(
-    user_id: int, new_status: str, db: AsyncSession, admin: dict
+    user_id: int, new_status: UserStatus, db: AsyncSession, admin: dict
 ) -> dict:
     conn = await raw_connection(db)
     row = await queries.find_by_id(conn, id=user_id)
