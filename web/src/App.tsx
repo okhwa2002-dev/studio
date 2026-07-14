@@ -1,10 +1,17 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './layouts/AppLayout'
 import { AuthProvider, useAuth } from './lib/auth'
+import { AdminProjects } from './pages/admin/AdminProjects'
+import { AdminSystem } from './pages/admin/AdminSystem'
+import { AdminUsers } from './pages/admin/AdminUsers'
+import { Approvals } from './pages/admin/Approvals'
 import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
 import { PendingApproval } from './pages/PendingApproval'
+import { Projects } from './pages/Projects'
 import { Register } from './pages/Register'
+import { Settings } from './pages/Settings'
+import { RequireAdmin } from './routes/RequireAdmin'
 import { RequireAuth } from './routes/RequireAuth'
 import { RequireGuest } from './routes/RequireGuest'
 
@@ -31,6 +38,14 @@ function Routing() {
       <Route element={<RequireAuth />}>
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route element={<RequireAdmin />}>
+            <Route path="/admin/approvals" element={<Approvals />} />
+            <Route path="/admin/users" element={<AdminUsers />} />
+            <Route path="/admin/projects" element={<AdminProjects />} />
+            <Route path="/admin/system" element={<AdminSystem />} />
+          </Route>
         </Route>
       </Route>
       {/* 알 수 없는 경로는 /dashboard로. 미로그인이면 RequireAuth가 /login으로 보낸다. */}
