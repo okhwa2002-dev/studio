@@ -4,6 +4,7 @@ from typing import Optional
 from sqlalchemy import BigInteger
 from sqlmodel import Field
 
+from app.constants import UserRole, UserStatus
 from app.models.base import (
     BaseEntity,
     created_at_field,
@@ -24,13 +25,13 @@ class User(BaseEntity, table=True):
         sa_column_kwargs={"comment": "argon2 해시 값 (평문 저장 금지)"}
     )
     role: str = Field(
-        default="member",
-        sa_column_kwargs={"comment": "권한: member | admin (기본값 member)"},
+        default=UserRole.MEMBER,
+        sa_column_kwargs={"comment": "권한: MEMBER | ADMIN (기본값 MEMBER)"},
     )
     status: str = Field(
-        default="pending",
+        default=UserStatus.PENDING,
         sa_column_kwargs={
-            "comment": "가입 상태: pending | active | disabled | rejected (기본값 pending)"
+            "comment": "가입 상태: PENDING | ACTIVE | DISABLED | REJECTED (기본값 PENDING)"
         },
     )
     approved_at: Optional[datetime] = Field(

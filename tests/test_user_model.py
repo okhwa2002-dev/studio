@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from app.constants import UserRole, UserStatus
 from app.models.user import User
 
 
@@ -11,8 +12,8 @@ async def test_user_defaults(db_session):
     await db_session.refresh(user)
 
     assert isinstance(user.id, int)
-    assert user.role == "member"
-    assert user.status == "pending"
+    assert user.role == UserRole.MEMBER
+    assert user.status == UserStatus.PENDING
     assert user.approved_at is None
     assert user.approved_by is None
 

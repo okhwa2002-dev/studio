@@ -1,9 +1,10 @@
 import app.auth.router as auth_router
 from app.auth.security import hash_password
+from app.constants import UserStatus
 from app.models.user import User
 
 
-async def _create_user(db_session, email: str, password: str, status: str = "active") -> User:
+async def _create_user(db_session, email: str, password: str, status: str = UserStatus.ACTIVE) -> User:
     user = User(email=email, password_hash=hash_password(password), status=status)
     db_session.add(user)
     await db_session.commit()
@@ -40,7 +41,7 @@ async def test_login_rejects_unknown_email(client):
 
 
 async def test_login_rejects_pending_user(client, db_session):
-    await _create_user(db_session, "pending@example.com", "pw12345", status="pending")
+    await _create_user(db_session, "pending@example.com", "pw12345", status=UserStatus.PENDING)
 
     resp = await client.post(
         "/auth/login", json={"email": "pending@example.com", "password": "pw12345"}

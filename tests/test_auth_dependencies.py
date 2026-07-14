@@ -2,12 +2,13 @@ from fastapi import Depends
 
 from app.auth.dependencies import current_user, require_admin
 from app.auth.security import hash_password
+from app.constants import UserRole, UserStatus
 from app.main import app
 from app.models.user import User
 
 
-async def _login(client, db_session, email: str, role: str = "member", password: str = "pw12345"):
-    user = User(email=email, password_hash=hash_password(password), role=role, status="active")
+async def _login(client, db_session, email: str, role: str = UserRole.MEMBER, password: str = "pw12345"):
+    user = User(email=email, password_hash=hash_password(password), role=role, status=UserStatus.ACTIVE)
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)
@@ -43,7 +44,7 @@ async def test_require_admin_rejects_non_admin(client, db_session):
     async def _admin_only(user: dict = Depends(require_admin)):
         return {"email": user["email"]}
 
-    await _login(client, db_session, "member-only@example.com", role="member")
+    await _login(client, db_session, "member-only@example.com", role=UserRole.MEMBER)
 
     resp = await client.get("/_admin_only")
     assert resp.status_code == 403
@@ -66,7 +67,7 @@ async def test_require_admin_allows_admin(client, db_session):
     async def _admin_only2(user: dict = Depends(require_admin)):
         return {"email": user["email"]}
 
-    await _login(client, db_session, "admin-user@example.com", role="admin")
+    await _login(client, db_session, "admin-user@example.com", role=UserRole.ADMIN)
 
     resp = await client.get("/_admin_only2")
     assert resp.status_code == 200

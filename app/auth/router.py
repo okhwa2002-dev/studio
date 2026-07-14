@@ -16,6 +16,7 @@ from app.auth.security import (
     verify_password,
 )
 from app.config import get_settings
+from app.constants import UserRole, UserStatus
 from app.db import get_db, raw_connection
 from app.queries import queries
 from app.utils.errors import Errors
@@ -51,8 +52,8 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
             conn,
             email=email,
             password_hash=hash_password(body.password),
-            role="member",
-            status="pending",
+            role=UserRole.MEMBER,
+            status=UserStatus.PENDING,
             created_at=now,
             updated_at=now,
         )
@@ -62,7 +63,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
         # 500이 아닌 409 CONFLICT로 변환한다.
         raise Errors.conflict("이미 등록된 이메일입니다.")
     await db.commit()
-    return {"id": user_id, "status": "pending"}
+    return {"id": user_id, "status": UserStatus.PENDING}
 
 
 class LoginRequest(BaseModel):
@@ -102,7 +103,7 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
         raise Errors.unauthorized("이메일 또는 비밀번호가 올바르지 않습니다.")
     if not verify_password(body.password, row["password_hash"]):
         raise Errors.unauthorized("이메일 또는 비밀번호가 올바르지 않습니다.")
-    if row["status"] != "active":
+    if row["status"] != UserStatus.ACTIVE:
         raise Errors.forbidden("관리자 승인 대기 중이거나 비활성화된 계정입니다.")
 
     access_token = create_access_token(row["id"], row["role"])
@@ -144,7 +145,7 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
         raise Errors.unauthorized("토큰이 만료되었습니다.")
 
     user_row = await queries.find_by_id(conn, id=row["user_id"])
-    if user_row is None or user_row["status"] != "active":
+    if user_row is None or user_row["status"] != UserStatus.ACTIVE:
         raise Errors.unauthorized()
 
     await queries.revoke_by_id(conn, id=row["id"], revoked_at=now, updated_at=now)

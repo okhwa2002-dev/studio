@@ -1,4 +1,5 @@
 from app.auth.security import hash_password
+from app.constants import UserRole, UserStatus
 from app.queries import queries
 from app.utils.time import now_local
 
@@ -21,8 +22,8 @@ async def ensure_admin_seeded(conn, email: str, password: str) -> bool:
         conn,
         email=email,
         password_hash=hash_password(password),
-        role="admin",
-        status="active",
+        role=UserRole.ADMIN,
+        status=UserStatus.ACTIVE,
         created_at=now,
         updated_at=now,
     )

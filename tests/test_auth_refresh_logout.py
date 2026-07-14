@@ -1,9 +1,10 @@
 from app.auth.security import hash_password
+from app.constants import UserStatus
 from app.models.user import User
 
 
 async def _login(client, db_session, email: str, password: str = "pw12345"):
-    user = User(email=email, password_hash=hash_password(password), status="active")
+    user = User(email=email, password_hash=hash_password(password), status=UserStatus.ACTIVE)
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_admin
+from app.constants import UserStatus
 from app.db import get_db, raw_connection
 from app.queries import queries
 from app.utils.errors import Errors
@@ -12,7 +13,8 @@ router = APIRouter(prefix="/admin/users", tags=["admin"])
 
 @router.get("")
 async def list_users(
-    status: str = Query("pending"),
+    # UserStatus로 선언하면 FastAPI가 값을 검증한다 → 잘못된 값은 422로 거절된다.
+    status: UserStatus = Query(UserStatus.PENDING),
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
@@ -48,7 +50,7 @@ async def approve_user(
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
-    return await _set_status(user_id, "active", db, admin)
+    return await _set_status(user_id, UserStatus.ACTIVE, db, admin)
 
 
 @router.post("/{user_id}/reject")
@@ -57,4 +59,4 @@ async def reject_user(
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
-    return await _set_status(user_id, "rejected", db, admin)
+    return await _set_status(user_id, UserStatus.REJECTED, db, admin)

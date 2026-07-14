@@ -1,4 +1,5 @@
 from app.auth.seed_admin import ensure_admin_seeded
+from app.constants import UserRole, UserStatus
 from app.db import raw_connection
 from app.queries import queries
 
@@ -11,8 +12,8 @@ async def test_ensure_admin_seeded_creates_admin_when_missing(db_session):
 
     row = await queries.find_by_email(conn, email="seed-admin@example.com")
     assert row is not None
-    assert row["role"] == "admin"
-    assert row["status"] == "active"
+    assert row["role"] == UserRole.ADMIN
+    assert row["status"] == UserStatus.ACTIVE
 
 
 async def test_ensure_admin_seeded_is_idempotent(db_session):
