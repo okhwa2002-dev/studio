@@ -63,6 +63,16 @@ npm run dev
 Vite dev 서버가 `/auth`, `/admin/users`, `/health` 요청을 `http://localhost:8000`으로 프록시한다.
 브라우저 입장에선 동일 출처이므로 CORS 설정 없이 httpOnly 인증 쿠키가 그대로 동작한다.
 
+### 로그
+
+앱 로그는 콘솔(stdout)과 파일(`LOG_DIR/studio.log`)에 같은 형식으로 남는다. 파일은 자정마다 로테이션된다.
+
+```
+2026-07-14 15:02:30 INFO app.sql - SQL 15.0ms INSERT INTO refresh_tokens (...) VALUES ($1, $2, ...) RETURNING id;
+```
+
+`.env`의 **`LOG_SQL=true`** 로 SQL 쿼리 로그를 켤 수 있다(기본값 `false`). 실행된 SQL과 소요시간만 남기고 **파라미터 값은 남기지 않는다** — 이 앱의 쿼리에는 `password_hash`와 리프레시 토큰 해시가 파라미터로 들어오기 때문이다.
+
 ### 동일 출처 규칙 (중요)
 
 인증은 **httpOnly + SameSite=Lax 쿠키**에 의존한다. 이 방식은 프론트와 API가 **같은 출처**일 때만 성립한다.

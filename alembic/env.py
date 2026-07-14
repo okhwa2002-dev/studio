@@ -16,8 +16,14 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
+#
+# disable_existing_loggers=False가 중요하다. 기본값(True)이면 fileConfig가
+# alembic.ini에 없는 기존 로거를 전부 비활성화시키는데, 여기에 우리 앱 로거
+# ("app", "app.sql")가 포함된다. Alembic을 인프로세스로 실행하는 경우
+# (테스트, 또는 앱에서 마이그레이션을 호출하는 경우) 그 이후로 앱 로그가
+# 조용히 사라진다.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = SQLModel.metadata
 
