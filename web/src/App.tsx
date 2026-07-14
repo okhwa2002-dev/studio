@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { AppLayout } from './layouts/AppLayout'
 import { AuthProvider, useAuth } from './lib/auth'
 import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
@@ -28,7 +29,9 @@ function Routing() {
       </Route>
       <Route path="/pending" element={<PendingApproval />} />
       <Route element={<RequireAuth />}>
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route element={<AppLayout />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+        </Route>
       </Route>
       {/* 알 수 없는 경로는 /dashboard로. 미로그인이면 RequireAuth가 /login으로 보낸다. */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
