@@ -8,6 +8,8 @@
     "dev:web": "npm --prefix web run dev:web",
     "test": "uv run pytest",
     "build": "npm --prefix web run build",
-    "lint": "npm --prefix web run lint"
+    "lint": "npm --prefix web run lint",
+    "migrate": "uv run alembic upgrade head",
+    "migrate:down": "uv run alembic downgrade -1"
   }
 }
