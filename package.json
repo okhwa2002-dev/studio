@@ -10,6 +10,8 @@
     "build": "npm --prefix web run build",
     "lint": "npm --prefix web run lint",
     "migrate": "uv run alembic upgrade head",
-    "migrate:down": "uv run alembic downgrade -1"
+    "migrate:down": "uv run alembic downgrade -1",
+    "seed:admin": "uv run python scripts/seed_admin.py",
+    "seed:sample": "uv run python scripts/seed_sample_users.py"
   }
 }
