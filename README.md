@@ -15,9 +15,23 @@ cd web && npm install                    # 프론트 의존성
 ```
 docker compose up -d db                  # DB 기동
 npm run migrate                          # 마이그레이션
-npm run seed:admin                       # 최초 관리자 계정 (.env의 ADMIN_EMAIL/ADMIN_PASSWORD)
 npm run seed:sample                      # (선택) 개발용 샘플 사용자 8명 — 비밀번호는 모두 password123
 ```
+
+### 최초 관리자 만들기
+
+가입은 자율이지만 로그인하려면 관리자 승인이 필요하다. 그런데 최초에는 승인해 줄 관리자가 없으므로, 첫 관리자만 DB에서 직접 승격시킨다.
+
+1. 앱을 띄우고 `/register`에서 회원가입한다. (앱이 비밀번호를 argon2로 해시해 `PENDING` 상태로 저장한다)
+2. 그 계정을 관리자로 승격시킨다:
+
+   ```
+   docker compose exec db psql -U studio -d studio -c "UPDATE users SET role='ADMIN', status='ACTIVE' WHERE email='내-이메일';"
+   ```
+
+3. 로그인한다. 이후 가입자는 이 관리자가 화면에서 승인한다.
+
+> psql에서 계정을 직접 INSERT하지 말 것. `password_hash`는 argon2 해시라, 평문을 넣으면 계정은 생기지만 로그인 검증에 실패한다. 해시는 회원가입 화면이 만들어준다.
 
 ### 매번 (개발 서버)
 
@@ -44,7 +58,6 @@ npm run dev
 | `npm run lint` | 프론트 린트 (oxlint) |
 | `npm run migrate` | 마이그레이션 적용 (alembic upgrade head) |
 | `npm run migrate:down` | 마이그레이션 한 단계 되돌리기 |
-| `npm run seed:admin` | 최초 관리자 계정 생성 |
 | `npm run seed:sample` | 개발용 샘플 사용자 8명 (로컬 DB에서만 동작) |
 
 Vite dev 서버가 `/auth`, `/admin/users`, `/health` 요청을 `http://localhost:8000`으로 프록시한다.
