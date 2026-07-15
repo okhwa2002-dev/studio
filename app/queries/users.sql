@@ -1,5 +1,6 @@
 -- name: find_by_email^
 SELECT id, email, password_hash, role, status, approved_at, approved_by,
+       failed_login_count, locked_at, unlocked_at,
        created_at, updated_at, created_by, updated_by
 FROM users
 WHERE email = :email;
@@ -11,12 +12,15 @@ RETURNING id;
 
 -- name: find_by_id^
 SELECT id, email, password_hash, role, status, approved_at, approved_by,
+       failed_login_count, locked_at, unlocked_at,
        created_at, updated_at, created_by, updated_by
 FROM users
 WHERE id = :id;
 
 -- name: list_by_status
-SELECT id, email, role, status, approved_at, approved_by, created_at, updated_at
+SELECT id, email, role, status, approved_at, approved_by,
+       failed_login_count, locked_at, unlocked_at,
+       created_at, updated_at
 FROM users
 WHERE status = :status
 ORDER BY created_at ASC;

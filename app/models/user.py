@@ -44,6 +44,21 @@ class User(BaseEntity, table=True):
         nullable=True,
         sa_column_kwargs={"comment": "승인/거절한 관리자 (FK: users.id 자기참조)"},
     )
+    failed_login_count: int = Field(
+        default=0,
+        sa_column_kwargs={
+            "server_default": "0",
+            "comment": "연속 로그인 실패 횟수 (성공 시 0으로 리셋)",
+        },
+    )
+    locked_at: Optional[datetime] = Field(
+        default=None,
+        sa_column_kwargs={"comment": "계정 잠긴 시각 (NULL=안 잠김, 값 있음=잠김)"},
+    )
+    unlocked_at: Optional[datetime] = Field(
+        default=None,
+        sa_column_kwargs={"comment": "관리자가 잠금 해제한 시각 (해제일시)"},
+    )
 
     created_at: Optional[datetime] = created_at_field()
     created_by: Optional[int] = created_by_field(

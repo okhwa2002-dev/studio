@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = []
     secure_cookies: bool = False
     log_sql: bool = False
+    failed_login_limit: int = 5
 
 
 @lru_cache
