@@ -7,7 +7,7 @@ export type Column<T> = {
 }
 
 // 책임은 하나: 스타일된 표를 그린다. 데이터를 가져오지 않고, 정렬·페이징도 없고,
-// 무슨 도메인인지 모른다. rows가 비고 empty가 주어지면 표 대신 empty를 보여준다.
+// 무슨 도메인인지 모른다. rows가 비면 헤더는 그대로 두고 데이터 영역에 empty를 보여준다.
 export function Table<T>({
   columns,
   rows,
@@ -19,14 +19,6 @@ export function Table<T>({
   rowKey: (row: T) => string | number
   empty?: ReactNode
 }) {
-  if (rows.length === 0 && empty !== undefined) {
-    return (
-      <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
-        {empty}
-      </div>
-    )
-  }
-
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
       <table className="w-full text-sm">
@@ -43,18 +35,27 @@ export function Table<T>({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={rowKey(row)} className="border-b border-slate-100 last:border-0">
-              {columns.map((col) => (
-                <td
-                  key={col.header}
-                  className={`px-4 py-3 text-slate-700 ${col.align === 'right' ? 'text-right' : 'text-left'}`}
-                >
-                  {col.cell(row)}
-                </td>
-              ))}
+          {rows.length === 0 ? (
+            // 데이터가 없어도 헤더는 남기고, 데이터 영역에만 안내 문구를 채운다.
+            <tr>
+              <td colSpan={columns.length} className="px-4 py-10 text-center text-sm text-slate-500">
+                {empty}
+              </td>
             </tr>
-          ))}
+          ) : (
+            rows.map((row) => (
+              <tr key={rowKey(row)} className="border-b border-slate-100 last:border-0">
+                {columns.map((col) => (
+                  <td
+                    key={col.header}
+                    className={`px-4 py-3 text-slate-700 ${col.align === 'right' ? 'text-right' : 'text-left'}`}
+                  >
+                    {col.cell(row)}
+                  </td>
+                ))}
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
     </div>

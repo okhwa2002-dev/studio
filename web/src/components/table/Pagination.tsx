@@ -1,4 +1,5 @@
-// 페이지가 하나뿐이면 컨트롤을 숨긴다. 도메인을 모르고 숫자만 안다.
+// 페이지가 하나뿐이거나 건수가 0이어도 항상 표시한다(양쪽 버튼은 비활성).
+// 도메인을 모르고 숫자만 안다. 바깥 여백·정렬은 두지 않는다 — 배치는 쓰는 쪽이 정한다.
 export function Pagination({
   page,
   totalPages,
@@ -8,16 +9,15 @@ export function Pagination({
   totalPages: number
   onChange: (page: number) => void
 }) {
-  if (totalPages <= 1) return null
-
   return (
-    <div className="mt-4 flex items-center justify-center gap-3 text-sm">
+    <div className="flex items-center gap-3 text-sm">
       <button
         onClick={() => onChange(page - 1)}
         disabled={page <= 1}
+        aria-label="이전 페이지"
         className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40"
       >
-        이전
+        {'<<'}
       </button>
       <span className="text-slate-600">
         {page} / {totalPages}
@@ -25,9 +25,10 @@ export function Pagination({
       <button
         onClick={() => onChange(page + 1)}
         disabled={page >= totalPages}
+        aria-label="다음 페이지"
         className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40"
       >
-        다음
+        {'>>'}
       </button>
     </div>
   )
