@@ -38,6 +38,10 @@ class Errors:
         return AppError(401, "UNAUTHORIZED", message)
 
     @staticmethod
+    def locked(message: str = "계정이 잠겼습니다. 관리자에게 문의하세요.") -> AppError:
+        return AppError(423, "ACCOUNT_LOCKED", message)
+
+    @staticmethod
     def invalid_id(message: str = "유효하지 않은 ID입니다.") -> AppError:
         return AppError(400, "INVALID_ID", message)
 

@@ -97,18 +97,39 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
     email = body.email.strip().lower()
     row = await queries.find_by_email(conn, email=email)
     if row is None:
-        # 더미 해시로라도 verify_password를 호출해 존재하는 계정과 동일한
-        # 연산 비용을 지불한다(결과는 사용하지 않음). 타이밍 사이드채널 방지.
+        # 더미 해시로라도 verify_password를 호출해 존재하는 계정과 동일한 연산 비용을 지불한다
+        # (타이밍 사이드채널 방지). 셀 계정이 없으므로 카운트 없음.
         verify_password(body.password, _DUMMY_PASSWORD_HASH)
         raise Errors.unauthorized("이메일 또는 비밀번호가 올바르지 않습니다.")
+
+    now = now_local()
     if not verify_password(body.password, row["password_hash"]):
+        # 실패 카운트 증가. 임계치 도달 시 잠근다. 이미 잠겼으면 잠금 시각을 유지한다.
+        new_count = row["failed_login_count"] + 1
+        if row["locked_at"] is not None:
+            new_locked_at = row["locked_at"]
+        elif new_count >= get_settings().failed_login_limit:
+            new_locked_at = now
+        else:
+            new_locked_at = None
+        await queries.record_failed_login(
+            conn, id=row["id"], failed_login_count=new_count, locked_at=new_locked_at, updated_at=now
+        )
+        await db.commit()
+        # 오답은 잠김 여부와 무관하게 항상 통일 401. 공격자에게 잠김을 드러내지 않는다.
         raise Errors.unauthorized("이메일 또는 비밀번호가 올바르지 않습니다.")
+
+    # 비밀번호는 맞음. 잠김은 status와 별개로 먼저 막는다(진짜 사용자에게만 423).
+    if row["locked_at"] is not None:
+        raise Errors.locked()
     if row["status"] != UserStatus.ACTIVE:
         raise Errors.forbidden("관리자 승인 대기 중이거나 비활성화된 계정입니다.")
 
+    if row["failed_login_count"] > 0:
+        await queries.reset_failed_login(conn, id=row["id"], updated_at=now)
+
     access_token = create_access_token(row["id"], row["role"])
     refresh_token = generate_refresh_token()
-    now = now_local()
     await queries.insert_refresh_token(
         conn,
         user_id=row["id"],

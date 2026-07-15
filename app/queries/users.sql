@@ -33,3 +33,16 @@ SET status = :status,
     updated_at = :updated_at,
     updated_by = :updated_by
 WHERE id = :id;
+
+-- name: record_failed_login!
+UPDATE users
+SET failed_login_count = :failed_login_count,
+    locked_at = :locked_at,
+    updated_at = :updated_at
+WHERE id = :id;
+
+-- name: reset_failed_login!
+UPDATE users
+SET failed_login_count = 0,
+    updated_at = :updated_at
+WHERE id = :id;
