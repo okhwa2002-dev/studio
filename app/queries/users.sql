@@ -46,3 +46,12 @@ UPDATE users
 SET failed_login_count = 0,
     updated_at = :updated_at
 WHERE id = :id;
+
+-- name: unlock_user!
+UPDATE users
+SET locked_at = NULL,
+    failed_login_count = 0,
+    unlocked_at = :unlocked_at,
+    updated_at = :updated_at,
+    updated_by = :updated_by
+WHERE id = :id;

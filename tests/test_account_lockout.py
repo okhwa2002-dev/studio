@@ -1,6 +1,6 @@
 import app.auth.router as auth_router
 from app.auth.security import hash_password
-from app.constants import UserStatus
+from app.constants import UserRole, UserStatus
 from app.db import raw_connection
 from app.models.user import User
 from app.queries import queries
@@ -82,3 +82,48 @@ async def test_lock_threshold_is_configurable(client, db_session, monkeypatch):
         await client.post("/auth/login", json={"email": "cfg@example.com", "password": "wrong"})
     await db_session.refresh(user)
     assert user.locked_at is not None
+
+
+async def _login_admin(client, db_session, email="lockadmin@example.com"):
+    admin = User(email=email, password_hash=hash_password("pw12345"), role=UserRole.ADMIN, status=UserStatus.ACTIVE)
+    db_session.add(admin)
+    await db_session.commit()
+    await db_session.refresh(admin)
+    resp = await client.post("/auth/login", json={"email": email, "password": "pw12345"})
+    assert resp.status_code == 200
+    return admin
+
+
+async def test_unlock_clears_lock_and_resets_count(client, db_session):
+    await _login_admin(client, db_session, email="unlockadmin@example.com")
+    target = await _active(db_session, "tounlock@example.com")
+    for _ in range(5):
+        await client.post("/auth/login", json={"email": "tounlock@example.com", "password": "wrong"})
+    await db_session.refresh(target)
+    assert target.locked_at is not None
+
+    resp = await client.post(f"/admin/users/{target.id}/unlock")
+    assert resp.status_code == 200
+    await db_session.refresh(target)
+    assert target.locked_at is None
+    assert target.failed_login_count == 0
+    assert target.unlocked_at is not None
+
+    # 해제 후 다시 로그인 가능
+    resp = await client.post("/auth/login", json={"email": "tounlock@example.com", "password": "pw12345"})
+    assert resp.status_code == 200
+
+
+async def test_unlock_unknown_user_returns_404(client, db_session):
+    await _login_admin(client, db_session, email="unlock404@example.com")
+    resp = await client.post("/admin/users/999999/unlock")
+    assert resp.status_code == 404
+
+
+async def test_unlock_rejects_non_admin(client, db_session):
+    member = User(email="unlockmember@example.com", password_hash=hash_password("pw12345"), role=UserRole.MEMBER, status=UserStatus.ACTIVE)
+    db_session.add(member)
+    await db_session.commit()
+    await client.post("/auth/login", json={"email": "unlockmember@example.com", "password": "pw12345"})
+    resp = await client.post("/admin/users/1/unlock")
+    assert resp.status_code == 403

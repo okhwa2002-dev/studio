@@ -60,3 +60,22 @@ async def reject_user(
     admin: dict = Depends(require_admin),
 ):
     return await _set_status(user_id, UserStatus.REJECTED, db, admin)
+
+
+@router.post("/{user_id}/unlock")
+async def unlock_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
+    conn = await raw_connection(db)
+    row = await queries.find_by_id(conn, id=user_id)
+    if row is None:
+        raise Errors.not_found("사용자를 찾을 수 없습니다.")
+
+    now = now_local()
+    await queries.unlock_user(
+        conn, id=user_id, unlocked_at=now, updated_at=now, updated_by=admin["id"]
+    )
+    await db.commit()
+    return {"id": user_id, "unlocked_at": now}
