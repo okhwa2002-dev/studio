@@ -13,9 +13,12 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Studio")
-app.include_router(health_router)
-app.include_router(auth_router)
-app.include_router(admin_users_router)
+# 모든 API는 /api 아래에 둔다. 이렇게 하면 프론트 SPA 라우트(/admin/users 등)와
+# 경로가 절대 겹치지 않아, 새로고침 시 문서 요청이 API로 새는 일이 없다
+# (개발: Vite 프록시가 /api만 넘긴다 / 운영: FastAPI가 dist를 서빙해도 충돌 없음).
+app.include_router(health_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
+app.include_router(admin_users_router, prefix="/api")
 
 
 @app.exception_handler(AppError)

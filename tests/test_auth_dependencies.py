@@ -13,7 +13,7 @@ async def _login(client, db_session, email: str, role: str = UserRole.MEMBER, pa
     await db_session.commit()
     await db_session.refresh(user)
 
-    resp = await client.post("/auth/login", json={"email": email, "password": password})
+    resp = await client.post("/api/auth/login", json={"email": email, "password": password})
     assert resp.status_code == 200
     return user
 

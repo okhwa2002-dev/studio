@@ -3,7 +3,7 @@ from app.constants import UserStatus
 
 async def test_register_creates_pending_user(client):
     resp = await client.post(
-        "/auth/register", json={"email": "new@example.com", "password": "pw12345"}
+        "/api/auth/register", json={"email": "new@example.com", "password": "pw12345"}
     )
     assert resp.status_code == 201
     body = resp.json()
@@ -13,10 +13,10 @@ async def test_register_creates_pending_user(client):
 
 async def test_register_rejects_duplicate_email(client):
     await client.post(
-        "/auth/register", json={"email": "dup@example.com", "password": "pw12345"}
+        "/api/auth/register", json={"email": "dup@example.com", "password": "pw12345"}
     )
     resp = await client.post(
-        "/auth/register", json={"email": "dup@example.com", "password": "other-pw"}
+        "/api/auth/register", json={"email": "dup@example.com", "password": "other-pw"}
     )
     assert resp.status_code == 409
     assert resp.json()["code"] == "CONFLICT"
@@ -30,13 +30,13 @@ async def test_register_rejects_duplicate_email_differing_in_case_and_whitespace
     처리되어야 한다.
     """
     resp1 = await client.post(
-        "/auth/register",
+        "/api/auth/register",
         json={"email": "Race@Example.com", "password": "pw12345"},
     )
     assert resp1.status_code == 201
 
     resp2 = await client.post(
-        "/auth/register",
+        "/api/auth/register",
         json={"email": " race@example.com ", "password": "other-pw"},
     )
     assert resp2.status_code == 409

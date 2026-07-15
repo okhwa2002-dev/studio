@@ -16,7 +16,7 @@ async def test_login_succeeds_for_active_user(client, db_session):
     await _create_user(db_session, "active@example.com", "pw12345")
 
     resp = await client.post(
-        "/auth/login", json={"email": "active@example.com", "password": "pw12345"}
+        "/api/auth/login", json={"email": "active@example.com", "password": "pw12345"}
     )
     assert resp.status_code == 200
     assert resp.json()["email"] == "active@example.com"
@@ -28,14 +28,14 @@ async def test_login_rejects_wrong_password(client, db_session):
     await _create_user(db_session, "active2@example.com", "pw12345")
 
     resp = await client.post(
-        "/auth/login", json={"email": "active2@example.com", "password": "wrong-pw"}
+        "/api/auth/login", json={"email": "active2@example.com", "password": "wrong-pw"}
     )
     assert resp.status_code == 401
 
 
 async def test_login_rejects_unknown_email(client):
     resp = await client.post(
-        "/auth/login", json={"email": "nobody@example.com", "password": "pw12345"}
+        "/api/auth/login", json={"email": "nobody@example.com", "password": "pw12345"}
     )
     assert resp.status_code == 401
 
@@ -44,7 +44,7 @@ async def test_login_rejects_pending_user(client, db_session):
     await _create_user(db_session, "pending@example.com", "pw12345", status=UserStatus.PENDING)
 
     resp = await client.post(
-        "/auth/login", json={"email": "pending@example.com", "password": "pw12345"}
+        "/api/auth/login", json={"email": "pending@example.com", "password": "pw12345"}
     )
     assert resp.status_code == 403
 
@@ -56,7 +56,7 @@ async def test_login_succeeds_with_email_differing_in_case_and_whitespace(client
     await _create_user(db_session, "casetest@example.com", "pw12345")
 
     resp = await client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"email": "  CaseTest@Example.com  ", "password": "pw12345"},
     )
     assert resp.status_code == 200
@@ -82,7 +82,7 @@ async def test_login_unknown_email_still_runs_password_verification(client, monk
     monkeypatch.setattr(auth_router, "verify_password", spy_verify_password)
 
     resp = await client.post(
-        "/auth/login", json={"email": "definitely-does-not-exist@example.com", "password": "whatever"}
+        "/api/auth/login", json={"email": "definitely-does-not-exist@example.com", "password": "whatever"}
     )
     assert resp.status_code == 401
     assert len(calls) == 1

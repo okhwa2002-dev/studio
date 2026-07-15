@@ -43,7 +43,7 @@ async def test_active_sample_user_can_log_in(client, db_session):
     await db_session.commit()
 
     resp = await client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"email": "sample-member1@example.com", "password": SAMPLE_PASSWORD},
     )
     assert resp.status_code == 200
@@ -55,7 +55,7 @@ async def test_pending_sample_user_cannot_log_in(client, db_session):
     await db_session.commit()
 
     resp = await client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"email": "sample-pending1@example.com", "password": SAMPLE_PASSWORD},
     )
     assert resp.status_code == 403

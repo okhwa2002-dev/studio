@@ -7,17 +7,14 @@ import tailwindcss from '@tailwindcss/vite'
 // httpOnly + SameSite=Lax 인증 쿠키가 그대로 동작한다.
 //
 // 프록시 키는 "경로 접두사"이고 XHR뿐 아니라 문서 요청(주소창 입력·새로고침)에도
-// 걸린다. 따라서 여기 적은 접두사 아래로는 프론트 라우트를 둘 수 없다.
-// 관리자 API는 /admin/users 뿐이므로 접두사를 그 경로까지 좁혔다. 이렇게 하지 않으면
-// 다음 Plan의 화면 /admin/approvals가 프록시에 먹혀 SPA 대신 FastAPI의 404 JSON이 뜬다
-// (앱 안에서 링크로 이동할 때는 멀쩡하고 새로고침할 때만 깨져서 발견이 늦다).
+// 걸린다. 그래서 모든 API를 /api 아래로 몰아, 프론트 SPA 라우트(/admin/users 등)와
+// 절대 겹치지 않게 했다. /api만 백엔드로 넘기므로, SPA 경로에서 새로고침해도
+// 문서 요청이 index.html로 서빙되어 앱이 정상적으로 뜬다.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      '/auth': 'http://localhost:8000',
-      '/admin/users': 'http://localhost:8000',
-      '/health': 'http://localhost:8000',
+      '/api': 'http://localhost:8000',
     },
   },
 })

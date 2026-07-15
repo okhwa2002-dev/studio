@@ -37,9 +37,12 @@ function refreshOnce(): Promise<Response> {
   return refreshInFlight
 }
 
+// 모든 API는 백엔드에서 /api 아래에 있다. 호출부는 '/auth/...', '/admin/...'처럼
+// 도메인 경로만 넘기고, 여기서 한 번만 '/api'를 붙인다. (NO_REFRESH_PATHS 비교는
+// 접두사를 붙이기 전 호출부 경로 기준이라 그대로 동작한다.)
 async function send(path: string, init?: RequestInit): Promise<Response> {
   try {
-    return await fetch(path, {
+    return await fetch(`/api${path}`, {
       credentials: 'include', // 인증 쿠키를 함께 보낸다
       headers: { 'Content-Type': 'application/json' },
       ...init,
