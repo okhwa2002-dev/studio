@@ -47,6 +47,7 @@ export function AdminUsers() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  const [actingId, setActingId] = useState<number | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -65,12 +66,54 @@ export function AdminUsers() {
     load()
   }, [load])
 
+  const act = async (id: number, action: 'approve' | 'reject') => {
+    setActingId(id)
+    setError(null)
+    try {
+      await adminUsers[action](id)
+      load() // 처리된 사용자는 현재(대기) 목록에서 빠진다
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : UNKNOWN)
+    } finally {
+      setActingId(null)
+    }
+  }
+
   const columns: Column<AdminUser>[] = [
     { header: '이메일', cell: (u) => u.email },
     { header: '역할', cell: (u) => roleLabel(u.role) },
     { header: '상태', cell: (u) => <StatusBadge status={u.status} /> },
     { header: '가입일', cell: (u) => formatDate(u.created_at), align: 'right' },
   ]
+
+  const columnsWithAction: Column<AdminUser>[] =
+    status === 'PENDING'
+      ? [
+          ...columns,
+          {
+            header: '액션',
+            align: 'right',
+            cell: (u) => (
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => act(u.id, 'approve')}
+                  disabled={actingId !== null}
+                  className="rounded-md bg-slate-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+                >
+                  승인
+                </button>
+                <button
+                  onClick={() => act(u.id, 'reject')}
+                  disabled={actingId !== null}
+                  className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  거절
+                </button>
+              </div>
+            ),
+          },
+        ]
+      : columns
 
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -104,7 +147,7 @@ export function AdminUsers() {
       ) : (
         <>
           <Table
-            columns={columns}
+            columns={columnsWithAction}
             rows={pageRows}
             rowKey={(u) => u.id}
             empty="해당 상태의 사용자가 없습니다."
