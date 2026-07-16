@@ -2,6 +2,36 @@
 
 쇼츠 자동 생성 웹앱. (설계: docs/superpowers/specs/2026-07-09-studio-design.md)
 
+## 기술 스택
+
+### 백엔드 (`app/`)
+| 항목 | 사용 기술 |
+|------|-----------|
+| 언어 | **Python 3.12+** |
+| 웹 프레임워크 | FastAPI + Uvicorn(ASGI) |
+| 스키마/모델 | SQLModel (SQLAlchemy 기반) |
+| 데이터베이스 | PostgreSQL (드라이버: asyncpg) |
+| 쿼리 | aiosql (`app/queries/*.sql` 이름 붙인 쿼리) |
+| 마이그레이션 | Alembic |
+| 설정 | pydantic-settings (`.env`) |
+| 인증 | argon2-cffi(비밀번호 해시) · PyJWT(httpOnly 쿠키 JWT) |
+| 테스트 | pytest · pytest-asyncio · httpx · testcontainers |
+| 패키지 매니저 | uv |
+
+### 프론트엔드 (`web/`)
+| 항목 | 사용 기술 |
+|------|-----------|
+| 언어 | **TypeScript** |
+| UI 프레임워크 | React 19 |
+| 라우팅 | react-router-dom 7 |
+| 빌드 도구 | Vite |
+| 스타일 | Tailwind CSS 4 |
+| 린트 | oxlint |
+| 패키지 매니저 | npm |
+
+### 인프라
+- **PostgreSQL 하나로 통일** — 데이터 저장 + (향후) 작업 큐(procrastinate)까지 담당해 Redis 불필요. 로컬은 `docker compose`로 기동.
+
 ## 개발 실행
 
 ### 최초 1회만
