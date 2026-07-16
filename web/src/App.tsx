@@ -8,6 +8,8 @@ import { Approvals } from './pages/admin/Approvals'
 import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
 import { PendingApproval } from './pages/PendingApproval'
+import { ProjectDetail } from './pages/ProjectDetail'
+import { ProjectNew } from './pages/ProjectNew'
 import { Projects } from './pages/Projects'
 import { Register } from './pages/Register'
 import { Settings } from './pages/Settings'
@@ -39,6 +41,8 @@ function Routing() {
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/projects" element={<Projects />} />
+          <Route path="/projects/new" element={<ProjectNew />} />
+          <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/settings" element={<Settings />} />
           <Route element={<RequireAdmin />}>
             <Route path="/admin/approvals" element={<Approvals />} />
