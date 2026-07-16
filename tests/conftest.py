@@ -1,3 +1,11 @@
+import os
+
+os.environ["SCRIPT_PROVIDER"] = "fake"  # 통합 테스트는 실제 LLM 호출 없이 fake로
+
+from app.config import get_settings  # noqa: E402
+
+get_settings.cache_clear()  # 위 env가 반영되도록 lru_cache 초기화
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient

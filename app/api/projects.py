@@ -5,6 +5,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
+from app.config import get_settings
 from app.constants import ProjectStatus, StageName, StageStatus
 from app.core import pipeline
 from app.db import get_db, raw_connection
@@ -89,7 +90,7 @@ async def create_project(
         created_at=now, updated_at=now, created_by=user["id"], updated_by=user["id"],
     )
     await queries.insert_stage(
-        conn, project_id=project_id, name=StageName.SCRIPT, provider="fake",
+        conn, project_id=project_id, name=StageName.SCRIPT, provider=get_settings().script_provider,
         status=StageStatus.PENDING, output=json.dumps({}), error=None, attempt=0,
         started_at=None, finished_at=None,
         created_at=now, updated_at=now, created_by=user["id"], updated_by=user["id"],

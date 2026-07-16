@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     secure_cookies: bool = False
     log_sql: bool = False
     failed_login_limit: int = 5
+    openai_api_key: str = ""
+    anthropic_api_key: str = ""
+    script_provider: str = "openai"
 
 
 @lru_cache

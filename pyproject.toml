@@ -14,6 +14,8 @@ dependencies = [
     "aiosql>=13.4",
     "argon2-cffi>=23.1",
     "pyjwt>=2.9",
+    "openai>=2.45.0",
+    "anthropic>=0.116.0",
 ]
 
 [dependency-groups]

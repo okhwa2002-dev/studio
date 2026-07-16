@@ -32,10 +32,12 @@ class Provider(ABC):
 
 
 # 새 도구 추가 = 클래스 1개 + 여기 1줄. core는 손대지 않는다.
+from app.providers.script.claude import ClaudeScript  # noqa: E402
 from app.providers.script.fake import FakeScript  # noqa: E402
+from app.providers.script.openai import OpenAIScript  # noqa: E402
 
 REGISTRY: dict[str, dict[str, type[Provider]]] = {
-    "script": {"fake": FakeScript},
+    "script": {"fake": FakeScript, "openai": OpenAIScript, "claude": ClaudeScript},
 }
 
 
