@@ -1,14 +1,20 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { FormError } from '../../components/FormError'
+import { Modal } from '../../components/Modal'
 import { TextField } from '../../components/TextField'
 import { ApiError } from '../../lib/api'
 import { projects } from '../../lib/projects'
 
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
-export function ProjectNew() {
-  const navigate = useNavigate()
+// 프로젝트 등록 모달. 생성에 성공하면 목록에 머문 채 onCreated로 알린다(라우팅 없음).
+export function NewProjectModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void
+  onCreated: () => void
+}) {
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -19,8 +25,8 @@ export function ProjectNew() {
     setSubmitting(true)
     setError(null)
     try {
-      const detail = await projects.create({ title: title.trim(), topic: topic.trim() })
-      navigate(`/projects/${detail.project.id}`)
+      await projects.create({ title: title.trim(), topic: topic.trim() })
+      onCreated()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : UNKNOWN)
       setSubmitting(false)
@@ -28,8 +34,7 @@ export function ProjectNew() {
   }
 
   return (
-    <div className="max-w-lg">
-      <h1 className="mb-4 text-lg font-semibold text-slate-900">새 프로젝트</h1>
+    <Modal title="새 프로젝트" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <TextField
           id="title"
@@ -46,14 +51,23 @@ export function ProjectNew() {
           onChange={(e) => setTopic(e.target.value)}
         />
         {error && <FormError message={error} />}
-        <button
-          type="submit"
-          disabled={submitting || !title.trim() || !topic.trim()}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          만들기
-        </button>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            취소
+          </button>
+          <button
+            type="submit"
+            disabled={submitting || !title.trim() || !topic.trim()}
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {submitting ? '처리 중…' : '만들기'}
+          </button>
+        </div>
       </form>
-    </div>
+    </Modal>
   )
 }

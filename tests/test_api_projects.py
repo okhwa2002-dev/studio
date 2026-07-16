@@ -94,3 +94,21 @@ async def test_create_trims_surrounding_whitespace(client, db_session):
     assert resp.status_code == 201
     assert resp.json()["project"]["title"] == "제목"
     assert resp.json()["project"]["topic"] == "주제"
+
+
+async def test_create_uses_configured_provider(client, db_session):
+    # conftest가 SCRIPT_PROVIDER=fake로 강제 → 생성된 script 단계 provider가 fake (가드)
+    await _login(client, db_session, "provider-cfg@example.com")
+    body = (await client.post("/api/projects", json={"title": "t", "topic": "주제"})).json()
+    assert body["stages"][0]["provider"] == "fake"
+
+
+async def test_create_uses_openai_when_configured(client, db_session, monkeypatch):
+    # 설정이 openai면 생성된 단계 provider도 openai (create는 실행을 안 하므로 network 없음)
+    monkeypatch.setattr(
+        "app.api.projects.get_settings",
+        lambda: __import__("types").SimpleNamespace(script_provider="openai"),
+    )
+    await _login(client, db_session, "provider-openai@example.com")
+    body = (await client.post("/api/projects", json={"title": "t", "topic": "주제"})).json()
+    assert body["stages"][0]["provider"] == "openai"
