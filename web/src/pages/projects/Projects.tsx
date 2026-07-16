@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { FormError } from '../components/FormError'
-import { Table, type Column } from '../components/table/Table'
-import { ApiError } from '../lib/api'
-import { projects, type ProjectSummary } from '../lib/projects'
+import { FormError } from '../../components/FormError'
+import { Table, type Column } from '../../components/table/Table'
+import { ApiError } from '../../lib/api'
+import { projects, type ProjectSummary } from '../../lib/projects'
 
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { FormError } from '../components/FormError'
-import { ApiError } from '../lib/api'
-import { hasScript, projects, STAGE_BADGE, type ProjectDetail as Detail, type Stage } from '../lib/projects'
+import { FormError } from '../../components/FormError'
+import { ApiError } from '../../lib/api'
+import { hasScript, projects, STAGE_BADGE, type ProjectDetail as Detail, type Stage } from '../../lib/projects'
 
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 

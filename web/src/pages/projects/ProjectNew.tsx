@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FormError } from '../components/FormError'
-import { TextField } from '../components/TextField'
-import { ApiError } from '../lib/api'
-import { projects } from '../lib/projects'
+import { FormError } from '../../components/FormError'
+import { TextField } from '../../components/TextField'
+import { ApiError } from '../../lib/api'
+import { projects } from '../../lib/projects'
 
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
