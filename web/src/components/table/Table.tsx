@@ -13,11 +13,13 @@ export function Table<T>({
   rows,
   rowKey,
   empty,
+  onRowClick,
 }: {
   columns: Column<T>[]
   rows: T[]
   rowKey: (row: T) => string | number
   empty?: ReactNode
+  onRowClick?: (row: T) => void // 주면 행 전체가 클릭 대상이 된다(커서·hover 포함)
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
@@ -44,7 +46,13 @@ export function Table<T>({
             </tr>
           ) : (
             rows.map((row) => (
-              <tr key={rowKey(row)} className="border-b border-slate-100 last:border-0">
+              <tr
+                key={rowKey(row)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={`border-b border-slate-100 last:border-0 ${
+                  onRowClick ? 'cursor-pointer hover:bg-slate-50' : ''
+                }`}
+              >
                 {columns.map((col) => (
                   <td
                     key={col.header}

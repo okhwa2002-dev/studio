@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { FormError } from '../../components/FormError'
 import { ApiError } from '../../lib/api'
 import { hasScript, projects, STAGE_BADGE, type ProjectDetail as Detail, type Stage } from '../../lib/projects'
@@ -123,6 +123,15 @@ export function ProjectDetail() {
           <div className="mt-3 text-sm text-red-700">오류: {stage.error}</div>
         )}
         {(stage.status === 'NEEDS_REVIEW' || stage.status === 'APPROVED') && <ScriptView stage={stage} />}
+      </div>
+
+      <div className="mt-6">
+        <Link
+          to="/projects"
+          className="inline-block rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          ← 목록으로
+        </Link>
       </div>
     </div>
   )
