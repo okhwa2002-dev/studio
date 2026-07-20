@@ -1,15 +1,17 @@
 import json
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
 from app.config import get_settings
-from app.constants import ProjectStatus, StageName, StageStatus
+from app.constants import AssetKind, ProjectStatus, StageName, StageStatus
 from app.core import pipeline
 from app.db import get_db, raw_connection
 from app.queries import queries
+from app.utils import storage
 from app.utils.errors import Errors
 from app.utils.time import now_local
 
@@ -148,3 +150,30 @@ async def regenerate_stage(
     stage = await _load_stage(conn, project_id, name)
     await pipeline.regenerate_stage(db, project, stage, actor_id=user["id"])
     return await _detail(conn, project_id)
+
+
+# kind → 내려줄 MIME 타입. 새 산출물 종류가 생기면 여기 한 줄.
+_MEDIA_TYPES = {AssetKind.AUDIO: "audio/mpeg"}
+
+
+@router.get("/{project_id}/stages/{name}/asset")
+async def get_stage_asset(
+    project_id: int, name: str, user: dict = Depends(current_user), db: AsyncSession = Depends(get_db)
+):
+    conn = await raw_connection(db)
+    await _load_owned_project(conn, project_id, user["id"])  # 남의 프로젝트면 여기서 404
+    stage = await _load_stage(conn, project_id, name)
+
+    row = await queries.find_asset_by_stage(conn, stage_id=stage["id"])
+    if row is None:
+        raise Errors.not_found("산출물을 찾을 수 없습니다.")
+
+    try:
+        path = storage.resolve(row["path"])
+    except ValueError:
+        # 저장된 경로가 저장소 밖을 가리킨다(DB 오염 등). 500 대신 다른 실패와 같은 404로 답한다.
+        raise Errors.not_found("산출물을 찾을 수 없습니다.")
+    if not path.exists():
+        # DB에는 있는데 파일이 없다 — 존재를 꾸며내지 않는다.
+        raise Errors.not_found("산출물을 찾을 수 없습니다.")
+    return FileResponse(path, media_type=_MEDIA_TYPES.get(row["kind"], "application/octet-stream"))

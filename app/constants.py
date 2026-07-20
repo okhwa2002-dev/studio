@@ -29,6 +29,7 @@ class StageName(StrEnum):
     """stages.name 코드값. provider 레지스트리 키와 맞춰 소문자."""
 
     SCRIPT = "script"
+    VOICE = "voice"
 
 
 class StageStatus(StrEnum):
@@ -39,3 +40,9 @@ class StageStatus(StrEnum):
     NEEDS_REVIEW = "NEEDS_REVIEW"
     APPROVED = "APPROVED"
     FAILED = "FAILED"
+
+
+class AssetKind(StrEnum):
+    """assets.kind 코드값. DB에 대문자로 저장된다."""
+
+    AUDIO = "AUDIO"

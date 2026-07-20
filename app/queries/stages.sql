@@ -38,3 +38,14 @@ SET status = :status,
     updated_at = :updated_at,
     updated_by = :updated_by
 WHERE id = :id;
+
+-- name: claim_stage_run<!
+-- PENDING/FAILED일 때만 RUNNING으로 선점한다. 영향 행이 0이면(RETURNING 없음) 이미
+-- 다른 요청이 먼저 잡았거나 실행 가능한 상태가 아니라는 뜻 — 동시 실행 가드.
+UPDATE stages
+SET status = :status,
+    started_at = :started_at,
+    updated_at = :updated_at,
+    updated_by = :updated_by
+WHERE id = :id AND status IN ('PENDING', 'FAILED')
+RETURNING id;
