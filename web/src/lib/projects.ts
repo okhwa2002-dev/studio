@@ -7,6 +7,7 @@ export type ScriptOutput = {
   scenes: ScriptScene[]
   estimated_duration_sec: number
 }
+export type VoiceOutput = { voice: string; size_bytes: number; chars: number }
 export type StageStatus = 'PENDING' | 'RUNNING' | 'NEEDS_REVIEW' | 'APPROVED' | 'FAILED'
 export type ProjectStatus = 'DRAFT' | 'REVIEW' | 'DONE'
 
@@ -15,7 +16,7 @@ export type Stage = {
   name: string
   provider: string
   status: StageStatus
-  output: ScriptOutput | Record<string, never>
+  output: ScriptOutput | VoiceOutput | Record<string, never>
   error: string | null
   attempt: number
 }
@@ -40,6 +41,9 @@ export const projects = {
     api.post<ProjectDetail>(`/projects/${id}/stages/${name}/approve`),
   regenerate: (id: number, name: string) =>
     api.post<ProjectDetail>(`/projects/${id}/stages/${name}/regenerate`),
+  // 재생성 후 브라우저가 옛 음성을 캐시하지 않도록 attempt를 붙인다.
+  assetUrl: (id: number, name: string, attempt: number) =>
+    `/api/projects/${id}/stages/${name}/asset?v=${attempt}`,
 }
 
 export const STAGE_BADGE: Record<StageStatus, { label: string; className: string }> = {
@@ -52,4 +56,8 @@ export const STAGE_BADGE: Record<StageStatus, { label: string; className: string
 
 export function hasScript(output: Stage['output']): output is ScriptOutput {
   return 'title' in output
+}
+
+export function hasVoice(output: Stage['output']): output is VoiceOutput {
+  return 'voice' in output
 }

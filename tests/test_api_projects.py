@@ -42,8 +42,15 @@ async def test_run_then_approve_flow(client, db_session):
 
     approved = await client.post(f"/api/projects/{pid}/stages/script/approve")
     assert approved.status_code == 200
-    assert approved.json()["stages"][0]["status"] == StageStatus.APPROVED
-    assert approved.json()["project"]["status"] == ProjectStatus.DONE
+    body = approved.json()
+    assert body["stages"][0]["status"] == StageStatus.APPROVED
+    # script는 마지막 단계가 아니므로 승인 시 project는 DONE이 아니라 REVIEW로 전이하고,
+    # voice 단계가 PENDING으로 새로 등록된다(다단계 전이 — 실행은 별도의 [실행] 호출로 시작).
+    assert body["project"]["status"] == ProjectStatus.REVIEW
+    assert body["project"]["current_stage"] == "voice"
+    assert len(body["stages"]) == 2
+    assert body["stages"][1]["name"] == "voice"
+    assert body["stages"][1]["status"] == StageStatus.PENDING
 
 
 async def test_regenerate_increments_attempt(client, db_session):

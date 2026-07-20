@@ -59,15 +59,21 @@ async def test_run_stage_rejects_non_pending(db_session):
 
 
 @pytest.mark.asyncio
-async def test_approve_stage_marks_project_done(db_session):
+async def test_approve_stage_registers_next_stage(db_session):
+    # script는 마지막 구현 단계가 아니므로(STAGE_ORDER = ["script", "voice"]) 승인 시
+    # project는 DONE이 아니라 REVIEW로 전이하고, voice 단계가 PENDING으로 등록된다.
     actor, project, stage = await _seed_project_and_stage(db_session)
     ran = await pipeline.run_stage(db_session, project, stage, actor_id=actor)
     await pipeline.approve_stage(db_session, project, ran, actor_id=actor)
     conn = await raw_connection(db_session)
     proj = await queries.find_project_by_id(conn, id=project["id"])
     stg = await queries.find_stage(conn, project_id=project["id"], name=StageName.SCRIPT)
-    assert proj["status"] == ProjectStatus.DONE
+    voice = await queries.find_stage(conn, project_id=project["id"], name=StageName.VOICE)
+    assert proj["status"] == ProjectStatus.REVIEW
+    assert proj["current_stage"] == StageName.VOICE
     assert stg["status"] == StageStatus.APPROVED
+    assert voice is not None
+    assert voice["status"] == StageStatus.PENDING
 
 
 @pytest.mark.asyncio

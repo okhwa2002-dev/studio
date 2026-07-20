@@ -3,7 +3,7 @@ from app.core.pipeline import STAGE_ORDER, can_transition
 
 
 def test_stage_order():
-    assert STAGE_ORDER == ["script"]
+    assert STAGE_ORDER == ["script", "voice"]
 
 
 def test_allowed_transitions():

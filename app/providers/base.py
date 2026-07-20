@@ -6,17 +6,19 @@ from app.utils.errors import AppError
 
 @dataclass
 class StageContext:
-    """단계 실행에 필요한 입력. (파일 workdir·SSE on_progress는 해당 단계 도입 시 확장)"""
+    """단계 실행에 필요한 입력. (SSE on_progress는 해당 단계 도입 시 확장)"""
 
     topic: str
     settings: dict = field(default_factory=dict)
     inputs: dict = field(default_factory=dict)  # 이전 단계 산출물 (script엔 비어있음)
     attempt: int = 0  # 재생성 횟수 → provider 출력 변주 seed
+    workdir: str = ""  # 저장소 기준 이 단계의 디렉토리 (파일을 만드는 단계만 사용)
 
 
 @dataclass
 class StageResult:
-    output: dict  # Stage.output 에 저장될 산출 (script는 대본 JSON)
+    output: dict  # Stage.output 에 저장될 산출 요약
+    assets: list[dict] = field(default_factory=list)  # {kind, path, meta} — core가 Asset으로 기록
 
 
 class Provider(ABC):
@@ -35,9 +37,12 @@ class Provider(ABC):
 from app.providers.script.claude import ClaudeScript  # noqa: E402
 from app.providers.script.fake import FakeScript  # noqa: E402
 from app.providers.script.openai import OpenAIScript  # noqa: E402
+from app.providers.voice.edge_tts import EdgeTTS  # noqa: E402
+from app.providers.voice.fake import FakeVoice  # noqa: E402
 
 REGISTRY: dict[str, dict[str, type[Provider]]] = {
     "script": {"fake": FakeScript, "openai": OpenAIScript, "claude": ClaudeScript},
+    "voice": {"fake": FakeVoice, "edge_tts": EdgeTTS},
 }
 
 

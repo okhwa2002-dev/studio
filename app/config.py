@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     script_provider: str = "openai"
+    voice_provider: str = "edge_tts"
 
 
 @lru_cache
