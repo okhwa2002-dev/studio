@@ -12,7 +12,7 @@ from app.utils.time import now_local
 
 logger = logging.getLogger(__name__)
 
-STAGE_ORDER: list[str] = ["script", "voice"]  # captions/render 미구현
+STAGE_ORDER: list[str] = ["script", "voice", "captions"]  # render 미구현
 
 # Stage.status 허용 전이. 여기 없는 전이는 모두 금지(잘못된 요청 → 409).
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
@@ -38,16 +38,31 @@ def decode_stage(row: dict) -> dict:
     return row
 
 
-async def _previous_outputs(conn, project_id: int, upto: str) -> dict:
-    """이 단계 앞의 단계들 output을 {단계이름: output}으로 모은다."""
-    inputs: dict = {}
+def _decode_meta(value):
+    """asyncpg가 문자열로 돌려준 assets.meta(jsonb)를 dict로 되돌린다."""
+    return json.loads(value) if isinstance(value, str) else value
+
+
+async def _previous_context(conn, project_id: int, upto: str) -> tuple[dict, dict]:
+    """이 단계 앞 단계들의 (outputs, assets)를 한 번의 순회로 모은다.
+
+    outputs: {단계이름: output}                       — 요약 JSON
+    assets:  {단계이름: [{kind, path, meta}, ...]}    — 파일 산출물
+    """
+    outputs: dict = {}
+    assets: dict = {}
     for name in STAGE_ORDER:
         if name == upto:
             break
         row = await queries.find_stage(conn, project_id=project_id, name=name)
-        if row is not None:
-            inputs[name] = decode_stage(dict(row))["output"]
-    return inputs
+        if row is None:
+            continue
+        outputs[name] = decode_stage(dict(row))["output"]
+        assets[name] = [
+            {"kind": r["kind"], "path": r["path"], "meta": _decode_meta(r["meta"])}
+            async for r in queries.list_assets_by_stage(conn, stage_id=row["id"])
+        ]
+    return outputs, assets
 
 
 async def _replace_assets(conn, stage_id: int, assets: list[dict], actor_id: int) -> None:
@@ -80,10 +95,12 @@ async def run_stage(session, project: dict, stage: dict, actor_id: int) -> dict:
         # 다른 요청이 먼저 잡았거나 실행 가능한 상태가 아니다.
         raise AppError(409, "STAGE_CONFLICT", "이미 실행 중이거나 검토 단계입니다.")
 
+    inputs, input_assets = await _previous_context(conn, project["id"], stage["name"])
     ctx = StageContext(
         topic=project["topic"],
         settings=project.get("settings", {}),
-        inputs=await _previous_outputs(conn, project["id"], stage["name"]),
+        inputs=inputs,
+        input_assets=input_assets,
         attempt=stage["attempt"],
         workdir=f"projects/{project['id']}/{stage['name']}",
     )

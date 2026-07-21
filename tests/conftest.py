@@ -2,6 +2,8 @@ import os
 
 os.environ["SCRIPT_PROVIDER"] = "fake"  # 통합 테스트는 실제 LLM 호출 없이 fake로
 os.environ["VOICE_PROVIDER"] = "fake"  # 통합 테스트는 실제 TTS 호출 없이 fake로
+os.environ["CAPTIONS_PROVIDER"] = "fake"  # 통합 테스트는 실제 whisper 모델 없이 fake로
+os.environ["WHISPER_MODEL"] = "small"  # 로컬 .env 값에 테스트가 흔들리지 않게 고정
 
 from app.config import get_settings  # noqa: E402
 
