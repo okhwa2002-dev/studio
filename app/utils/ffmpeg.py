@@ -52,7 +52,7 @@ async def run(cmd: list[str], cwd: str) -> None:
         import subprocess
 
         try:
-            proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+            proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         except OSError as exc:
             raise RuntimeError(f"ffmpeg 실행 불가: {exc}") from exc
         return proc.returncode, proc.stderr

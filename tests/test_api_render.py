@@ -52,3 +52,17 @@ async def test_approving_render_completes_the_project(client, db_session, monkey
     await client.post(f"/api/projects/{pid}/stages/render/run")
     detail = (await client.post(f"/api/projects/{pid}/stages/render/approve")).json()
     assert detail["project"]["status"] == "DONE"
+
+
+async def test_other_user_cannot_download_video(client, db_session, monkeypatch, tmp_path):
+    from app.utils import storage
+
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    await _login(client, db_session, "render-iso-a@example.com")
+    pid = await _project_through_captions(client)
+    await client.post(f"/api/projects/{pid}/stages/render/run")
+
+    await _login(client, db_session, "render-iso-b@example.com")
+    r = await client.get(f"/api/projects/{pid}/stages/render/asset")
+    assert r.status_code == 404
+    assert r.json()["code"] == "RESOURCE_NOT_FOUND"

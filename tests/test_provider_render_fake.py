@@ -27,6 +27,7 @@ async def test_fake_writes_mp4_and_output(monkeypatch, tmp_path):
     assert result.assets[0]["path"] == "projects/8/render/render.mp4"
     assert result.output["width"] == 1080
     assert result.output["height"] == 1920
+    assert result.output["duration_sec"] is None  # no captions duration in this ctx -> None, key present
 
 
 @pytest.mark.asyncio

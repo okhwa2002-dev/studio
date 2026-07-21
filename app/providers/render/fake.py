@@ -21,6 +21,12 @@ class FakeRender(Provider):
         rel = f"{ctx.workdir}/{_FILENAME}"
         size = storage.write_bytes(rel, data)
         return StageResult(
-            output={"provider": "fake", "width": _WIDTH, "height": _HEIGHT, "size_bytes": size},
+            output={
+                "provider": "fake",
+                "width": _WIDTH,
+                "height": _HEIGHT,
+                "duration_sec": ctx.inputs.get("captions", {}).get("duration_sec"),
+                "size_bytes": size,
+            },
             assets=[{"kind": AssetKind.VIDEO, "path": rel, "meta": {"size_bytes": size}}],
         )

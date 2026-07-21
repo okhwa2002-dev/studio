@@ -130,7 +130,7 @@ function RenderView({ projectId, stage }: { projectId: number; stage: Stage }) {
       </a>
       <div className="text-xs text-slate-400">
         {stage.output.width}×{stage.output.height}
-        {stage.output.duration_sec !== null && ` · ${stage.output.duration_sec.toFixed(1)}초`}
+        {stage.output.duration_sec != null && ` · ${stage.output.duration_sec.toFixed(1)}초`}
       </div>
     </div>
   )
