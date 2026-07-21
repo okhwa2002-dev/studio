@@ -15,3 +15,16 @@ def test_settings_loads_from_env(monkeypatch):
     assert s.app_timezone == "Asia/Seoul"      # 기본값
     assert s.storage_backend == "local"        # 기본값
     assert s.secure_cookies is False           # 기본값
+
+
+def test_render_settings_defaults(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/studio")
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    importlib.reload(config_module)
+    config_module.get_settings.cache_clear()
+
+    s = config_module.get_settings()
+    assert s.render_provider == "slideshow"
+    assert s.render_bg_color == "#0f172a"
+    assert s.render_font == "Malgun Gothic"
+    assert s.render_font_size == 96

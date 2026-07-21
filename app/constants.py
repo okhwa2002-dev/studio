@@ -31,6 +31,7 @@ class StageName(StrEnum):
     SCRIPT = "script"
     VOICE = "voice"
     CAPTIONS = "captions"
+    RENDER = "render"
 
 
 class StageStatus(StrEnum):
@@ -48,3 +49,4 @@ class AssetKind(StrEnum):
 
     AUDIO = "AUDIO"
     SRT = "SRT"
+    VIDEO = "VIDEO"

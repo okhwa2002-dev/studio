@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     voice_provider: str = "edge_tts"
     captions_provider: str = "whisper"
     whisper_model: str = "small"
+    render_provider: str = "slideshow"
+    render_bg_color: str = "#0f172a"
+    render_font: str = "Malgun Gothic"
+    render_font_size: int = 96
 
 
 @lru_cache
