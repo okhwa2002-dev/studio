@@ -12,7 +12,7 @@ from app.utils.time import now_local
 
 logger = logging.getLogger(__name__)
 
-STAGE_ORDER: list[str] = ["script", "voice", "captions"]  # render 미구현
+STAGE_ORDER: list[str] = ["script", "voice", "captions", "render"]
 
 # Stage.status 허용 전이. 여기 없는 전이는 모두 금지(잘못된 요청 → 409).
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {

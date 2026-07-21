@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { FormError } from '../../components/FormError'
 import { ApiError } from '../../lib/api'
-import { hasCaptions, hasScript, hasVoice, projects, STAGE_BADGE, type ProjectDetail as Detail, type Stage } from '../../lib/projects'
+import { hasCaptions, hasRender, hasScript, hasVoice, projects, STAGE_BADGE, type ProjectDetail as Detail, type Stage } from '../../lib/projects'
 
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
@@ -40,6 +40,7 @@ const STAGE_LABEL: Record<string, string> = {
   script: '대본 (script)',
   voice: '음성 (voice)',
   captions: '자막 (captions)',
+  render: '영상 (render)',
 }
 
 function VoiceView({ projectId, stage }: { projectId: number; stage: Stage }) {
@@ -114,6 +115,27 @@ function CaptionsView({
   )
 }
 
+function RenderView({ projectId, stage }: { projectId: number; stage: Stage }) {
+  if (!hasRender(stage.output)) return null
+  const url = projects.assetUrl(projectId, stage.name, stage.attempt)
+  return (
+    <div className="mt-4 space-y-2 rounded-md border border-slate-200 p-4">
+      <video controls className="w-full rounded-md bg-black" src={url} />
+      <a
+        href={url}
+        download="render.mp4"
+        className="inline-block rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+      >
+        mp4 다운로드
+      </a>
+      <div className="text-xs text-slate-400">
+        {stage.output.width}×{stage.output.height}
+        {stage.output.duration_sec != null && ` · ${stage.output.duration_sec.toFixed(1)}초`}
+      </div>
+    </div>
+  )
+}
+
 function StageCard({
   projectId,
   stage,
@@ -173,6 +195,7 @@ function StageCard({
           <ScriptView stage={stage} />
           <VoiceView projectId={projectId} stage={stage} />
           <CaptionsView projectId={projectId} stage={stage} voiceAttempt={voiceAttempt} />
+          <RenderView projectId={projectId} stage={stage} />
         </>
       )}
     </div>

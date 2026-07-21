@@ -46,7 +46,7 @@ async def test_running_captions_produces_words_and_srt(client, db_session, monke
     assert "-->" in asset.content.decode("utf-8")
 
 
-async def test_approving_captions_completes_the_project(client, db_session, monkeypatch, tmp_path):
+async def test_approving_captions_advances_to_render(client, db_session, monkeypatch, tmp_path):
     from app.utils import storage
 
     monkeypatch.setattr(storage, "_root", lambda: tmp_path)
@@ -55,7 +55,9 @@ async def test_approving_captions_completes_the_project(client, db_session, monk
 
     await client.post(f"/api/projects/{pid}/stages/captions/run")
     detail = (await client.post(f"/api/projects/{pid}/stages/captions/approve")).json()
-    assert detail["project"]["status"] == "DONE"
+    assert detail["project"]["status"] == "REVIEW"
+    assert detail["project"]["current_stage"] == "render"
+    assert any(s["name"] == "render" and s["status"] == "PENDING" for s in detail["stages"])
 
 
 async def test_other_user_cannot_download_srt(client, db_session, monkeypatch, tmp_path):

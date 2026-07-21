@@ -95,11 +95,30 @@ async def test_approving_voice_registers_captions_pending(db_session):
 
 
 @pytest.mark.asyncio
-async def test_approving_captions_marks_project_done(db_session):
+async def test_approving_captions_registers_render_pending(db_session):
     actor, project, script = await _seed_script_needs_review(db_session, "trans5@example.com")
     await pipeline.approve_stage(db_session, project, script, actor_id=actor)
     await _approve_via_needs_review(db_session, project, StageName.VOICE, actor)
     await _approve_via_needs_review(db_session, project, StageName.CAPTIONS, actor)
+
+    conn = await raw_connection(db_session)
+    render = await queries.find_stage(conn, project_id=project["id"], name=StageName.RENDER)
+    assert render is not None, "captions 승인 시 render 단계가 등록돼야 한다"
+    assert render["status"] == StageStatus.PENDING
+
+    updated_project = dict(await queries.find_project_by_id(conn, id=project["id"]))
+    assert updated_project["current_stage"] == StageName.RENDER
+    # 아직 마지막 단계가 아니므로 DONE이 아니다
+    assert updated_project["status"] != ProjectStatus.DONE
+
+
+@pytest.mark.asyncio
+async def test_approving_render_marks_project_done(db_session):
+    actor, project, script = await _seed_script_needs_review(db_session, "trans6@example.com")
+    await pipeline.approve_stage(db_session, project, script, actor_id=actor)
+    await _approve_via_needs_review(db_session, project, StageName.VOICE, actor)
+    await _approve_via_needs_review(db_session, project, StageName.CAPTIONS, actor)
+    await _approve_via_needs_review(db_session, project, StageName.RENDER, actor)
 
     conn = await raw_connection(db_session)
     updated_project = dict(await queries.find_project_by_id(conn, id=project["id"]))
