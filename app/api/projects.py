@@ -153,7 +153,11 @@ async def regenerate_stage(
 
 
 # kind → 내려줄 MIME 타입. 새 산출물 종류가 생기면 여기 한 줄.
-_MEDIA_TYPES = {AssetKind.AUDIO: "audio/mpeg", AssetKind.SRT: "application/x-subrip"}
+_MEDIA_TYPES = {
+    AssetKind.AUDIO: "audio/mpeg",
+    AssetKind.SRT: "application/x-subrip",
+    AssetKind.VIDEO: "video/mp4",
+}
 
 
 @router.get("/{project_id}/stages/{name}/asset")
