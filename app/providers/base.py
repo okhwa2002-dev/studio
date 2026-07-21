@@ -38,6 +38,7 @@ class Provider(ABC):
 from app.providers.captions.fake import FakeCaptions  # noqa: E402
 from app.providers.captions.whisper import WhisperCaptions  # noqa: E402
 from app.providers.render.fake import FakeRender  # noqa: E402
+from app.providers.render.slideshow import SlideshowRender  # noqa: E402
 from app.providers.script.claude import ClaudeScript  # noqa: E402
 from app.providers.script.fake import FakeScript  # noqa: E402
 from app.providers.script.openai import OpenAIScript  # noqa: E402
@@ -48,7 +49,7 @@ REGISTRY: dict[str, dict[str, type[Provider]]] = {
     "script": {"fake": FakeScript, "openai": OpenAIScript, "claude": ClaudeScript},
     "voice": {"fake": FakeVoice, "edge_tts": EdgeTTS},
     "captions": {"fake": FakeCaptions, "whisper": WhisperCaptions},
-    "render": {"fake": FakeRender},
+    "render": {"fake": FakeRender, "slideshow": SlideshowRender},
 }
 
 
