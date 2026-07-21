@@ -49,7 +49,10 @@ async def run(cmd: list[str], cwd: str) -> None:
     def _run() -> tuple[int, str]:
         import subprocess
 
-        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+        try:
+            proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+        except OSError as exc:
+            raise RuntimeError(f"ffmpeg 실행 불가: {exc}") from exc
         return proc.returncode, proc.stderr
 
     code, stderr = await asyncio.to_thread(_run)

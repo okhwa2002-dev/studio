@@ -1,3 +1,5 @@
+import pytest
+
 from app.utils.ffmpeg import build_slideshow_cmd
 
 
@@ -44,3 +46,11 @@ def test_cmd_matches_audio_length_and_web_pixfmt():
     assert "-shortest" in cmd
     assert "yuv420p" in cmd
     assert cmd[-1] == "projects/7/render/render.mp4"
+
+
+@pytest.mark.asyncio
+async def test_run_converts_missing_binary_to_runtimeerror(tmp_path):
+    from app.utils.ffmpeg import run
+
+    with pytest.raises(RuntimeError):
+        await run(["/no/such/ffmpeg-binary", "-version"], cwd=str(tmp_path))
