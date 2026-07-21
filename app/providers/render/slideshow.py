@@ -41,10 +41,13 @@ class SlideshowRender(Provider):
             font=settings.render_font,
             font_size=settings.render_font_size,
         )
+        out_abs = storage.resolve(out_rel)
+        out_abs.parent.mkdir(parents=True, exist_ok=True)
+
         # cwd를 저장소 루트로 둬야 상대경로 자막 필터가 동작한다(Windows ':' 회피).
         await self._runner(cmd, str(storage.resolve(".")))
 
-        size = storage.resolve(out_rel).stat().st_size
+        size = out_abs.stat().st_size
         duration = ctx.inputs.get("captions", {}).get("duration_sec")
         return StageResult(
             output={
