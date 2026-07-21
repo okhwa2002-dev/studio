@@ -20,6 +20,7 @@ def test_settings_loads_from_env(monkeypatch):
 def test_render_settings_defaults(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/studio")
     monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.delenv("RENDER_PROVIDER", raising=False)
     importlib.reload(config_module)
     config_module.get_settings.cache_clear()
 
