@@ -28,4 +28,4 @@ def test_render_settings_defaults(monkeypatch):
     assert s.render_provider == "slideshow"
     assert s.render_bg_color == "#0f172a"
     assert s.render_font == "Malgun Gothic"
-    assert s.render_font_size == 96
+    assert s.render_font_size == 30

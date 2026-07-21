@@ -26,10 +26,12 @@ def build_slideshow_cmd(
     subtitles 필터 구분자와 충돌하는 Windows 문제를 회피한다. 오디오는 필터가
     아니라 -i 입력이라 절대경로여도 안전하다.
     """
+    # Alignment=10 = 화면 정중앙. 번들 libass는 레거시 SSA 넘버링을 쓴다
+    # (5는 좌상단, 10이 중앙) — 실제 렌더로 검증한 값이므로 5로 되돌리지 말 것.
     style = (
         f"Fontname={font},Fontsize={font_size},"
         "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-        "BorderStyle=1,Outline=3,Shadow=0,Alignment=5"
+        "BorderStyle=1,Outline=3,Shadow=0,Alignment=10"
     )
     vf = f"subtitles={srt_rel}:force_style='{style}'"
     return [

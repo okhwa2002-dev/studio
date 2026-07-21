@@ -39,4 +39,4 @@ async def test_real_ffmpeg_produces_playable_mp4(monkeypatch, tmp_path):
     out = tmp_path / "projects/1/render/render.mp4"
     assert out.exists() and out.stat().st_size > 0
     assert result.assets[0]["kind"] == AssetKind.VIDEO
-    print(f"\n[스모크] 생성됨: {out} ({out.stat().st_size} bytes) — 자막·폰트 육안 확인")
+    print(f"\n[smoke] created: {out} ({out.stat().st_size} bytes) - check captions/font visually")

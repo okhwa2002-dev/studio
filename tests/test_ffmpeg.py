@@ -38,7 +38,7 @@ def test_cmd_burns_relative_srt_with_forward_slashes():
     assert "subtitles=projects/7/captions/captions.srt" in vf
     assert "Fontname=Malgun Gothic" in vf
     assert "Fontsize=96" in vf
-    assert "Alignment=5" in vf
+    assert "Alignment=10" in vf  # 레거시 SSA 넘버링에서 중앙 (5는 좌상단)
 
 
 def test_cmd_matches_audio_length_and_web_pixfmt():
