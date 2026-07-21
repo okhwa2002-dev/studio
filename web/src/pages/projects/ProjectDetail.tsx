@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { FormError } from '../../components/FormError'
 import { ApiError } from '../../lib/api'
-import { hasScript, hasVoice, projects, STAGE_BADGE, type ProjectDetail as Detail, type Stage } from '../../lib/projects'
+import { hasCaptions, hasScript, hasVoice, projects, STAGE_BADGE, type ProjectDetail as Detail, type Stage } from '../../lib/projects'
 
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
@@ -39,6 +39,7 @@ function ScriptView({ stage }: { stage: Stage }) {
 const STAGE_LABEL: Record<string, string> = {
   script: '대본 (script)',
   voice: '음성 (voice)',
+  captions: '자막 (captions)',
 }
 
 function VoiceView({ projectId, stage }: { projectId: number; stage: Stage }) {
@@ -57,14 +58,72 @@ function VoiceView({ projectId, stage }: { projectId: number; stage: Stage }) {
   )
 }
 
+function CaptionsView({
+  projectId,
+  stage,
+  voiceAttempt,
+}: {
+  projectId: number
+  stage: Stage
+  voiceAttempt: number | null
+}) {
+  // 훅은 조건부 반환보다 먼저 호출해야 한다.
+  const cursor = useRef(0)
+  const [active, setActive] = useState(-1)
+
+  if (!hasCaptions(stage.output)) return null
+  const { words, word_count, duration_sec } = stage.output
+
+  // 단어가 수백 개라 매 틱 전체를 훑지 않고 현재 위치에서 전진한다.
+  const onTimeUpdate = (e: React.SyntheticEvent<HTMLAudioElement>) => {
+    if (words.length === 0) return // 단어가 하나도 없는 자막도 카드가 렌더되므로 방어
+    const t = e.currentTarget.currentTime
+    let i = cursor.current
+    if (i >= words.length || t < words[i].s) i = 0 // 뒤로 감았다 → 처음부터 다시 전진
+    while (i < words.length - 1 && t >= words[i + 1].s) i += 1
+    cursor.current = i
+    setActive(t >= words[i].s && t < words[i].e ? i : -1)
+  }
+
+  return (
+    <div className="mt-4 space-y-3 rounded-md border border-slate-200 p-4">
+      {voiceAttempt !== null && (
+        <audio
+          controls
+          className="w-full"
+          src={projects.assetUrl(projectId, 'voice', voiceAttempt)}
+          onTimeUpdate={onTimeUpdate}
+        />
+      )}
+      <div className="flex flex-wrap gap-1 text-sm leading-7">
+        {words.map((word, i) => (
+          <span
+            key={i}
+            className={`rounded px-1 ${
+              i === active ? 'bg-yellow-200 text-slate-900' : 'text-slate-700'
+            }`}
+          >
+            {word.w}
+          </span>
+        ))}
+      </div>
+      <div className="text-xs text-slate-400">
+        {word_count}단어 · {duration_sec.toFixed(1)}초
+      </div>
+    </div>
+  )
+}
+
 function StageCard({
   projectId,
   stage,
+  voiceAttempt,
   acting,
   act,
 }: {
   projectId: number
   stage: Stage
+  voiceAttempt: number | null
   acting: boolean
   act: (fn: () => Promise<Detail>) => Promise<void>
 }) {
@@ -82,7 +141,7 @@ function StageCard({
               disabled={acting}
               className="rounded-md bg-slate-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
             >
-              실행
+              {acting ? '생성 중… (최대 1분)' : '실행'}
             </button>
           )}
           {stage.status === 'NEEDS_REVIEW' && (
@@ -113,6 +172,7 @@ function StageCard({
         <>
           <ScriptView stage={stage} />
           <VoiceView projectId={projectId} stage={stage} />
+          <CaptionsView projectId={projectId} stage={stage} voiceAttempt={voiceAttempt} />
         </>
       )}
     </div>
@@ -156,6 +216,8 @@ export function ProjectDetail() {
   if (loading) return <div className="p-10 text-center text-sm text-slate-500">불러오는 중…</div>
   if (!detail) return <FormError message={error ?? UNKNOWN} />
 
+  const voiceAttempt = detail.stages.find((s) => s.name === 'voice')?.attempt ?? null
+
   return (
     <div className="max-w-2xl">
       <h1 className="text-lg font-semibold text-slate-900">{detail.project.title}</h1>
@@ -165,7 +227,14 @@ export function ProjectDetail() {
 
       <div className="mt-6">
         {detail.stages.map((s) => (
-          <StageCard key={s.id} projectId={projectId} stage={s} acting={acting} act={act} />
+          <StageCard
+            key={s.id}
+            projectId={projectId}
+            stage={s}
+            voiceAttempt={voiceAttempt}
+            acting={acting}
+            act={act}
+          />
         ))}
       </div>
 
