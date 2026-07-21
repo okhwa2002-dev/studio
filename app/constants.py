@@ -30,6 +30,7 @@ class StageName(StrEnum):
 
     SCRIPT = "script"
     VOICE = "voice"
+    CAPTIONS = "captions"
 
 
 class StageStatus(StrEnum):
@@ -46,3 +47,4 @@ class AssetKind(StrEnum):
     """assets.kind 코드값. DB에 대문자로 저장된다."""
 
     AUDIO = "AUDIO"
+    SRT = "SRT"

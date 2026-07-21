@@ -11,6 +11,7 @@ class StageContext:
     topic: str
     settings: dict = field(default_factory=dict)
     inputs: dict = field(default_factory=dict)  # 이전 단계 산출물 (script엔 비어있음)
+    input_assets: dict = field(default_factory=dict)  # {단계이름: [{kind, path, meta}]} 파일 산출물
     attempt: int = 0  # 재생성 횟수 → provider 출력 변주 seed
     workdir: str = ""  # 저장소 기준 이 단계의 디렉토리 (파일을 만드는 단계만 사용)
 
@@ -34,6 +35,8 @@ class Provider(ABC):
 
 
 # 새 도구 추가 = 클래스 1개 + 여기 1줄. core는 손대지 않는다.
+from app.providers.captions.fake import FakeCaptions  # noqa: E402
+from app.providers.captions.whisper import WhisperCaptions  # noqa: E402
 from app.providers.script.claude import ClaudeScript  # noqa: E402
 from app.providers.script.fake import FakeScript  # noqa: E402
 from app.providers.script.openai import OpenAIScript  # noqa: E402
@@ -43,6 +46,7 @@ from app.providers.voice.fake import FakeVoice  # noqa: E402
 REGISTRY: dict[str, dict[str, type[Provider]]] = {
     "script": {"fake": FakeScript, "openai": OpenAIScript, "claude": ClaudeScript},
     "voice": {"fake": FakeVoice, "edge_tts": EdgeTTS},
+    "captions": {"fake": FakeCaptions, "whisper": WhisperCaptions},
 }
 
 

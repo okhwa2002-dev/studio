@@ -45,6 +45,22 @@ async def _seed_script_needs_review(session, email: str):
     return user.id, project, stage
 
 
+async def _approve_via_needs_review(session, project, name: str, actor: int):
+    """PENDING으로 등록된 단계를 NEEDS_REVIEW로 올린 뒤 승인한다(실행은 건너뛴다)."""
+    conn = await raw_connection(session)
+    stage = pipeline.decode_stage(
+        dict(await queries.find_stage(conn, project_id=project["id"], name=name))
+    )
+    await queries.update_stage_status(
+        conn, id=stage["id"], status=StageStatus.NEEDS_REVIEW,
+        updated_at=now_local(), updated_by=actor,
+    )
+    await session.commit()
+    stage["status"] = StageStatus.NEEDS_REVIEW
+    await pipeline.approve_stage(session, project, stage, actor_id=actor)
+    return stage
+
+
 @pytest.mark.asyncio
 async def test_approving_script_registers_voice_pending(db_session):
     actor, project, script = await _seed_script_needs_review(db_session, "trans1@example.com")
@@ -62,23 +78,30 @@ async def test_approving_script_registers_voice_pending(db_session):
 
 
 @pytest.mark.asyncio
-async def test_approving_last_stage_marks_project_done(db_session):
+async def test_approving_voice_registers_captions_pending(db_session):
     actor, project, script = await _seed_script_needs_review(db_session, "trans2@example.com")
     await pipeline.approve_stage(db_session, project, script, actor_id=actor)
+    await _approve_via_needs_review(db_session, project, StageName.VOICE, actor)
 
     conn = await raw_connection(db_session)
-    voice = pipeline.decode_stage(
-        dict(await queries.find_stage(conn, project_id=project["id"], name=StageName.VOICE))
-    )
-    # voice를 검토 상태로 만든 뒤 승인 → 마지막 구현 단계이므로 프로젝트 DONE
-    await queries.update_stage_status(
-        conn, id=voice["id"], status=StageStatus.NEEDS_REVIEW,
-        updated_at=now_local(), updated_by=actor,
-    )
-    await db_session.commit()
-    voice["status"] = StageStatus.NEEDS_REVIEW
-    await pipeline.approve_stage(db_session, project, voice, actor_id=actor)
+    captions = await queries.find_stage(conn, project_id=project["id"], name=StageName.CAPTIONS)
+    assert captions is not None, "voice 승인 시 captions 단계가 등록돼야 한다"
+    assert captions["status"] == StageStatus.PENDING
 
+    updated_project = dict(await queries.find_project_by_id(conn, id=project["id"]))
+    assert updated_project["current_stage"] == StageName.CAPTIONS
+    # 아직 마지막 단계가 아니므로 DONE이 아니다
+    assert updated_project["status"] != ProjectStatus.DONE
+
+
+@pytest.mark.asyncio
+async def test_approving_captions_marks_project_done(db_session):
+    actor, project, script = await _seed_script_needs_review(db_session, "trans5@example.com")
+    await pipeline.approve_stage(db_session, project, script, actor_id=actor)
+    await _approve_via_needs_review(db_session, project, StageName.VOICE, actor)
+    await _approve_via_needs_review(db_session, project, StageName.CAPTIONS, actor)
+
+    conn = await raw_connection(db_session)
     updated_project = dict(await queries.find_project_by_id(conn, id=project["id"]))
     assert updated_project["status"] == ProjectStatus.DONE
 
@@ -103,17 +126,19 @@ async def test_reapproving_does_not_duplicate_next_stage(db_session):
 
 
 @pytest.mark.asyncio
-async def test_previous_outputs_excludes_current_and_later_stages(db_session):
-    """STAGE_ORDER에 두 단계가 있을 때 _previous_outputs의 break가 실제로 동작하는지 확인.
+async def test_previous_context_excludes_current_and_later_stages(db_session):
+    """STAGE_ORDER를 순회하다 현재 단계에서 멈추는지 확인.
 
-    script(첫 단계) 기준으로는 앞 단계가 없으므로 inputs가 비어 있어야 하고,
-    voice(다음 단계) 기준으로는 script 산출물만 포함돼야 한다(자기 자신·이후 단계 제외).
+    script(첫 단계) 기준으로는 앞 단계가 없으므로 비어 있어야 하고,
+    voice 기준으로는 script 것만 포함돼야 한다(자기 자신·이후 단계 제외).
     """
     actor, project, script = await _seed_script_needs_review(db_session, "trans4@example.com")
     conn = await raw_connection(db_session)
 
-    script_inputs = await pipeline._previous_outputs(conn, project["id"], StageName.SCRIPT)
-    assert script_inputs == {}
+    inputs, assets = await pipeline._previous_context(conn, project["id"], StageName.SCRIPT)
+    assert inputs == {}
+    assert assets == {}
 
-    voice_inputs = await pipeline._previous_outputs(conn, project["id"], StageName.VOICE)
-    assert voice_inputs == {"script": {"scenes": []}}
+    inputs, assets = await pipeline._previous_context(conn, project["id"], StageName.VOICE)
+    assert inputs == {"script": {"scenes": []}}
+    assert assets == {"script": []}  # script는 파일 산출물이 없다

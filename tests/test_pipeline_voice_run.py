@@ -166,3 +166,19 @@ async def test_run_persists_running_status_mid_flight(db_session, monkeypatch, t
     updated = await pipeline.run_stage(db_session, project, voice, actor_id=actor)
     assert seen_status["status"] == StageStatus.RUNNING
     assert updated["status"] == StageStatus.NEEDS_REVIEW
+
+
+@pytest.mark.asyncio
+async def test_previous_context_carries_voice_audio_to_next_stage(db_session, monkeypatch, tmp_path):
+    """voice가 만든 mp3가 다음 단계(captions)의 input_assets로 전달되는지."""
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    actor, project, voice = await _seed(db_session, "voice-assets@example.com")
+    await pipeline.run_stage(db_session, project, voice, actor_id=actor)
+
+    conn = await raw_connection(db_session)
+    _, assets = await pipeline._previous_context(conn, project["id"], StageName.CAPTIONS)
+    audio = [a for a in assets["voice"] if a["kind"] == AssetKind.AUDIO]
+    assert len(audio) == 1
+    assert audio[0]["path"] == f"projects/{project['id']}/voice/voice.mp3"
+    # meta는 jsonb라 asyncpg가 문자열로 준다 — dict로 디코드돼야 한다
+    assert audio[0]["meta"]["size_bytes"] > 0

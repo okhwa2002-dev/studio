@@ -15,6 +15,7 @@
 | 마이그레이션 | Alembic |
 | 설정 | pydantic-settings (`.env`) |
 | 인증 | argon2-cffi(비밀번호 해시) · PyJWT(httpOnly 쿠키 JWT) |
+| 자막(STT) | faster-whisper (로컬 CPU, torch 불필요) |
 | 테스트 | pytest · pytest-asyncio · httpx · testcontainers |
 | 패키지 매니저 | uv |
 
@@ -47,6 +48,10 @@ docker compose up -d db                  # DB 기동
 npm run migrate                          # 마이그레이션
 npm run seed:sample                      # (선택) 개발용 샘플 사용자 8명 — 비밀번호는 모두 password123
 ```
+
+> **captions 단계 최초 실행 시** whisper `small` 모델(~500MB)을 자동으로 내려받습니다.
+> 그 첫 실행만 오래 걸리고 이후에는 캐시를 씁니다. 모델 크기는 `.env`의 `WHISPER_MODEL`로 바꿉니다
+> (`tiny`|`base`|`small`|`medium`). 키 없이 쓰려면 `CAPTIONS_PROVIDER=fake`로 두세요.
 
 ### 최초 관리자 만들기
 

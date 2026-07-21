@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     script_provider: str = "openai"
     voice_provider: str = "edge_tts"
+    captions_provider: str = "whisper"
+    whisper_model: str = "small"
 
 
 @lru_cache

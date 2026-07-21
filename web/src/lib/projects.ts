@@ -8,6 +8,13 @@ export type ScriptOutput = {
   estimated_duration_sec: number
 }
 export type VoiceOutput = { voice: string; size_bytes: number; chars: number }
+export type CaptionWord = { w: string; s: number; e: number }
+export type CaptionsOutput = {
+  language: string
+  duration_sec: number
+  word_count: number
+  words: CaptionWord[]
+}
 export type StageStatus = 'PENDING' | 'RUNNING' | 'NEEDS_REVIEW' | 'APPROVED' | 'FAILED'
 export type ProjectStatus = 'DRAFT' | 'REVIEW' | 'DONE'
 
@@ -16,7 +23,7 @@ export type Stage = {
   name: string
   provider: string
   status: StageStatus
-  output: ScriptOutput | VoiceOutput | Record<string, never>
+  output: ScriptOutput | VoiceOutput | CaptionsOutput | Record<string, never>
   error: string | null
   attempt: number
 }
@@ -60,4 +67,8 @@ export function hasScript(output: Stage['output']): output is ScriptOutput {
 
 export function hasVoice(output: Stage['output']): output is VoiceOutput {
   return 'voice' in output
+}
+
+export function hasCaptions(output: Stage['output']): output is CaptionsOutput {
+  return 'words' in output
 }
