@@ -34,6 +34,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 addopts = "-v"
+markers = ["slow: 실제 ffmpeg 등 느린 통합 테스트 (기본 실행에 포함)"]
 
 [build-system]
 requires = ["hatchling"]
