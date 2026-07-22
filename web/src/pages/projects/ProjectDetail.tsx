@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { FormError } from '../../components/FormError'
 import { ApiError } from '../../lib/api'
+import { subscribeProject, type StageProgress } from '../../lib/events'
 import { hasCaptions, hasRender, hasScript, hasVoice, projects, STAGE_BADGE, type ProjectDetail as Detail, type Stage } from '../../lib/projects'
 
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
@@ -136,16 +137,46 @@ function RenderView({ projectId, stage }: { projectId: number; stage: Stage }) {
   )
 }
 
+// 백엔드 계산값이 튀거나(105%) 음수로 잠깐 흔들려도 바가 넘치거나 뒤집히지 않게 막는다.
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(Math.max(n, min), max)
+}
+
+function ProgressBar({ progress }: { progress: StageProgress }) {
+  const { percent, message } = progress
+  return (
+    <div className="mt-3 space-y-1">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+        {percent === null ? (
+          // 진짜 진행률이 없는 단계(대본·음성) — 가짜 숫자 대신 움직이는 띠를 보여준다.
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-blue-400" />
+        ) : (
+          <div
+            className="h-full rounded-full bg-blue-500 transition-[width] duration-300"
+            style={{ width: `${clamp(percent, 0, 100)}%` }}
+          />
+        )}
+      </div>
+      <div className="text-xs text-slate-500">
+        {message}
+        {percent !== null && ` ${Math.round(clamp(percent, 0, 100))}%`}
+      </div>
+    </div>
+  )
+}
+
 function StageCard({
   projectId,
   stage,
   voiceAttempt,
+  progress,
   acting,
   act,
 }: {
   projectId: number
   stage: Stage
   voiceAttempt: number | null
+  progress: StageProgress | undefined
   acting: boolean
   act: (fn: () => Promise<Detail>) => Promise<void>
 }) {
@@ -163,7 +194,7 @@ function StageCard({
               disabled={acting}
               className="rounded-md bg-slate-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
             >
-              {acting ? '생성 중… (최대 1분)' : '실행'}
+              {acting ? '요청 중…' : '실행'}
             </button>
           )}
           {stage.status === 'NEEDS_REVIEW' && (
@@ -187,6 +218,10 @@ function StageCard({
         </div>
       </div>
 
+      {(stage.status === 'QUEUED' || stage.status === 'RUNNING') && (
+        <ProgressBar progress={progress ?? { percent: null, message: '대기 중…' }} />
+      )}
+
       {stage.status === 'FAILED' && stage.error && (
         <div className="mt-3 text-sm text-red-700">오류: {stage.error}</div>
       )}
@@ -206,24 +241,58 @@ export function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const projectId = Number(id)
   const [detail, setDetail] = useState<Detail | null>(null)
+  const [progress, setProgress] = useState<Record<string, StageProgress>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [acting, setActing] = useState(false)
 
-  const load = useCallback(() => {
+  useEffect(() => {
     setLoading(true)
     setError(null)
-    projects
-      .detail(projectId)
-      .then(setDetail)
-      .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
-      .finally(() => setLoading(false))
+    // 첫 화면은 SSE의 snapshot이 채운다. 실패는 구독 래퍼가 재시도로 흡수한다.
+    const unsubscribe = subscribeProject(projectId, (event) => {
+      setLoading(false)
+      if (event.type === 'fatal') {
+        // 삭제됐거나 남의 프로젝트(404), 갱신 후에도 만료된 인증(401) — 재시도해도
+        // 절대 낫지 않으므로 구독은 이미 스스로 멈췄다. 여기서는 화면에만 반영한다.
+        setDetail(null)
+        setError(event.message)
+        return
+      }
+      if (event.type === 'snapshot') {
+        setDetail({ project: event.project, stages: event.stages })
+        setProgress(event.progress)
+        return
+      }
+      if (event.type === 'stage') {
+        setDetail((prev) =>
+          prev === null
+            ? prev
+            : {
+                project: event.project,
+                stages: prev.stages.some((s) => s.id === event.stage.id)
+                  ? prev.stages.map((s) => (s.id === event.stage.id ? event.stage : s))
+                  : [...prev.stages, event.stage],
+              },
+        )
+        // 단계가 끝났으면 진행률을 지운다 — 다음 실행의 잔상이 남지 않게.
+        if (event.stage.status !== 'QUEUED' && event.stage.status !== 'RUNNING') {
+          setProgress((prev) => {
+            const { [event.stage.name]: _done, ...rest } = prev
+            return rest
+          })
+        }
+        return
+      }
+      setProgress((prev) => ({
+        ...prev,
+        [event.stage]: { percent: event.percent, message: event.message },
+      }))
+    })
+    return unsubscribe
   }, [projectId])
 
-  useEffect(() => {
-    load()
-  }, [load])
-
+  // 요청을 보내는 동안만 잠근다. 실행 완료를 기다리지 않는다 — 결과는 SSE로 온다.
   const act = async (fn: () => Promise<Detail>) => {
     setActing(true)
     setError(null)
@@ -255,6 +324,7 @@ export function ProjectDetail() {
             projectId={projectId}
             stage={s}
             voiceAttempt={voiceAttempt}
+            progress={progress[s.name]}
             acting={acting}
             act={act}
           />

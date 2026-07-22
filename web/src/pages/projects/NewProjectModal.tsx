@@ -17,6 +17,7 @@ export function NewProjectModal({
 }) {
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
+  const [autoRun, setAutoRun] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -25,7 +26,7 @@ export function NewProjectModal({
     setSubmitting(true)
     setError(null)
     try {
-      await projects.create({ title: title.trim(), topic: topic.trim() })
+      await projects.create({ title: title.trim(), topic: topic.trim(), auto_run: autoRun })
       onCreated()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : UNKNOWN)
@@ -50,6 +51,20 @@ export function NewProjectModal({
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
         />
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={autoRun}
+            onChange={(e) => setAutoRun(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            자동으로 끝까지 진행
+            <span className="block text-xs text-slate-400">
+              대본·음성·자막·영상을 검토 없이 이어서 만듭니다. 중간에 실패하면 멈춥니다.
+            </span>
+          </span>
+        </label>
         {error && <FormError message={error} />}
         <div className="flex justify-end gap-2">
           <button
