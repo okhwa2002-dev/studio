@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     render_bg_color: str = "#0f172a"
     render_font: str = "Malgun Gothic"
     render_font_size: int = 30
+    # whisper·ffmpeg는 CPU를 포화시킨다. 병렬로 돌려도 서로 느려지기만 하므로 기본 1.
+    worker_concurrency: int = 1
 
 
 @lru_cache

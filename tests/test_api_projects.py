@@ -14,6 +14,19 @@ async def _login(client, db_session, email: str) -> User:
     return user
 
 
+async def _drain(db_session, stage_id: int):
+    """API는 큐에 넣기만 한다. 테스트에서는 워커를 직접 한 번 돌려 완료시킨다."""
+    from contextlib import asynccontextmanager
+
+    from app.core.worker import StageWorker
+
+    @asynccontextmanager
+    async def _factory():
+        yield db_session
+
+    await StageWorker(session_factory=_factory).run_one(stage_id)
+
+
 async def test_requires_auth(client):
     resp = await client.get("/api/projects")
     assert resp.status_code == 401
@@ -30,45 +43,79 @@ async def test_create_project_seeds_pending_script_stage(client, db_session):
     assert body["stages"][0]["status"] == StageStatus.PENDING
 
 
-async def test_run_then_approve_flow(client, db_session):
+async def test_run_returns_202_and_queues(client, db_session):
+    # 실행은 이제 요청 안에서 끝나지 않는다 — 즉시 202 + QUEUED로 돌아온다.
+    from app.core.worker import get_worker
+
     await _login(client, db_session, "b@example.com")
     pid = (await client.post("/api/projects", json={"title": "t", "topic": "우주"})).json()["project"]["id"]
 
     ran = await client.post(f"/api/projects/{pid}/stages/script/run")
-    assert ran.status_code == 200
-    stage = ran.json()["stages"][0]
-    assert stage["status"] == StageStatus.NEEDS_REVIEW
-    assert stage["output"]["title"].startswith("우주")
-
-    approved = await client.post(f"/api/projects/{pid}/stages/script/approve")
-    assert approved.status_code == 200
-    body = approved.json()
-    assert body["stages"][0]["status"] == StageStatus.APPROVED
-    # script는 마지막 단계가 아니므로 승인 시 project는 DONE이 아니라 REVIEW로 전이하고,
-    # voice 단계가 PENDING으로 새로 등록된다(다단계 전이 — 실행은 별도의 [실행] 호출로 시작).
-    assert body["project"]["status"] == ProjectStatus.REVIEW
-    assert body["project"]["current_stage"] == "voice"
-    assert len(body["stages"]) == 2
-    assert body["stages"][1]["name"] == "voice"
-    assert body["stages"][1]["status"] == StageStatus.PENDING
-
-
-async def test_regenerate_increments_attempt(client, db_session):
-    await _login(client, db_session, "c@example.com")
-    pid = (await client.post("/api/projects", json={"title": "t", "topic": "커피"})).json()["project"]["id"]
-    await client.post(f"/api/projects/{pid}/stages/script/run")
-    regen = await client.post(f"/api/projects/{pid}/stages/script/regenerate")
-    assert regen.status_code == 200
-    assert regen.json()["stages"][0]["attempt"] == 1
-    assert regen.json()["stages"][0]["status"] == StageStatus.NEEDS_REVIEW
+    assert ran.status_code == 202
+    assert ran.json()["stages"][0]["status"] == StageStatus.QUEUED
+    # 배선 고정: run이 전역 워커 큐에 실제로 넣지 않으면(리팩터/머지 충돌로 enqueue
+    # 한 줄이 사라지면) 위 단언들은 여전히 초록이다 — 큐를 직접 들여다봐야 잡힌다.
+    stage_id = ran.json()["stages"][0]["id"]
+    assert get_worker()._queue.get_nowait() == stage_id
 
 
 async def test_run_twice_conflicts(client, db_session):
     await _login(client, db_session, "d@example.com")
     pid = (await client.post("/api/projects", json={"title": "t", "topic": "산"})).json()["project"]["id"]
-    await client.post(f"/api/projects/{pid}/stages/script/run")  # → NEEDS_REVIEW
+    assert (await client.post(f"/api/projects/{pid}/stages/script/run")).status_code == 202
     again = await client.post(f"/api/projects/{pid}/stages/script/run")
     assert again.status_code == 409
+
+
+async def test_regenerate_returns_202_and_increments_attempt(client, db_session):
+    from app.core.worker import StageWorker
+
+    await _login(client, db_session, "c@example.com")
+    pid = (await client.post("/api/projects", json={"title": "t", "topic": "커피"})).json()["project"]["id"]
+
+    # 첫 실행을 워커로 완료시켜 NEEDS_REVIEW로 만든다.
+    await client.post(f"/api/projects/{pid}/stages/script/run")
+    stage_id = (await client.get(f"/api/projects/{pid}")).json()["stages"][0]["id"]
+    await _drain(db_session, stage_id)
+
+    from app.core.worker import get_worker
+
+    regen = await client.post(f"/api/projects/{pid}/stages/script/regenerate")
+    assert regen.status_code == 202
+    body = regen.json()
+    assert body["stages"][0]["attempt"] == 1
+    assert body["stages"][0]["status"] == StageStatus.QUEUED
+    # 배선 고정: regenerate도 전역 워커 큐에 실제로 넣어야 한다(I-3).
+    assert get_worker()._queue.get_nowait() == body["stages"][0]["id"]
+
+
+async def test_approve_still_returns_200(client, db_session):
+    await _login(client, db_session, "approve@example.com")
+    pid = (await client.post("/api/projects", json={"title": "t", "topic": "바다"})).json()["project"]["id"]
+    await client.post(f"/api/projects/{pid}/stages/script/run")
+    stage_id = (await client.get(f"/api/projects/{pid}")).json()["stages"][0]["id"]
+    await _drain(db_session, stage_id)
+
+    approved = await client.post(f"/api/projects/{pid}/stages/script/approve")
+    assert approved.status_code == 200
+    body = approved.json()
+    assert body["stages"][0]["status"] == StageStatus.APPROVED
+    assert body["project"]["current_stage"] == "voice"
+    assert body["stages"][1]["status"] == StageStatus.PENDING
+
+
+async def test_create_with_auto_run_queues_script(client, db_session):
+    from app.core.worker import get_worker
+
+    await _login(client, db_session, "autoapi@example.com")
+    resp = await client.post(
+        "/api/projects", json={"title": "t", "topic": "고래", "auto_run": True}
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["stages"][0]["status"] == StageStatus.QUEUED
+    # 배선 고정: create(auto_run=True)도 전역 워커 큐에 실제로 넣어야 한다(I-3).
+    assert get_worker()._queue.get_nowait() == body["stages"][0]["id"]
 
 
 async def test_owner_isolation(client, db_session):

@@ -29,7 +29,7 @@ class Stage(BaseEntity, table=True):
     provider: str = Field(sa_column_kwargs={"comment": "사용한 provider 이름 (예: fake)"})
     status: str = Field(
         default=StageStatus.PENDING,
-        sa_column_kwargs={"comment": "상태: PENDING|RUNNING|NEEDS_REVIEW|APPROVED|FAILED"},
+        sa_column_kwargs={"comment": "상태: PENDING|QUEUED|RUNNING|NEEDS_REVIEW|APPROVED|FAILED"},
     )
     output: dict = Field(
         default_factory=dict,

@@ -1,6 +1,9 @@
+import subprocess
+import sys
+
 import pytest
 
-from app.utils.ffmpeg import build_slideshow_cmd
+from app.utils.ffmpeg import build_slideshow_cmd, parse_progress_percent
 
 
 def _cmd():
@@ -48,9 +51,72 @@ def test_cmd_matches_audio_length_and_web_pixfmt():
     assert cmd[-1] == "projects/7/render/render.mp4"
 
 
+def test_cmd_asks_ffmpeg_for_progress():
+    # 진행률을 stdout으로 받아야 파싱할 수 있다.
+    cmd = _cmd()
+    assert cmd[cmd.index("-progress") + 1] == "pipe:1"
+
+
+def test_parse_progress_percent_reads_out_time_us():
+    assert parse_progress_percent("out_time_us=5000000\n", 10.0) == 50.0
+
+
+def test_parse_progress_percent_clamps_to_100():
+    # -shortest로 끝나는 순간 out_time이 총 길이를 살짝 넘을 수 있다.
+    assert parse_progress_percent("out_time_us=11000000\n", 10.0) == 100.0
+
+
+def test_parse_progress_percent_ignores_other_lines():
+    assert parse_progress_percent("frame=120\n", 10.0) is None
+    assert parse_progress_percent("out_time_us=N/A\n", 10.0) is None  # 시작 직후엔 N/A가 온다
+    # 총 길이를 모르면 %를 낼 수 없다.
+    assert parse_progress_percent("out_time_us=5000000\n", None) is None
+
+
 @pytest.mark.asyncio
 async def test_run_converts_missing_binary_to_runtimeerror(tmp_path):
     from app.utils.ffmpeg import run
 
     with pytest.raises(RuntimeError):
         await run(["/no/such/ffmpeg-binary", "-version"], cwd=str(tmp_path))
+
+
+@pytest.mark.asyncio
+async def test_run_reaps_process_and_keeps_reading_when_on_progress_raises(monkeypatch, tmp_path):
+    # 실제 ffmpeg 대신 파이썬으로 "-progress pipe:1" 출력 모양(out_time_us= 줄)만
+    # 흉내내는 값싼 가짜 커맨드 — run()의 정리 로직만 검증하면 되므로 충분히 빠르다.
+    from app.utils.ffmpeg import run
+
+    script = (
+        "import sys\n"
+        "for i in range(3):\n"
+        "    print(f'out_time_us={i * 1_000_000}')\n"
+        "    sys.stdout.flush()\n"
+    )
+    cmd = [sys.executable, "-c", script]
+
+    # run()이 실제로 wait()까지 마쳐 회수했는지 보려면 만들어진 Popen 인스턴스를
+    # 붙잡아야 한다. mock이 아니라 진짜 Popen을 그대로 쓰고 참조만 가로챈다.
+    captured: list[subprocess.Popen] = []
+    real_popen = subprocess.Popen
+
+    def _spy_popen(*args, **kwargs):
+        proc = real_popen(*args, **kwargs)
+        captured.append(proc)
+        return proc
+
+    monkeypatch.setattr(subprocess, "Popen", _spy_popen)
+
+    seen_percents: list[float] = []
+
+    def _raising_on_progress(percent, message):
+        seen_percents.append(percent)
+        # 프로덕션에서 워커 종료 중 call_soon_threadsafe가 닫힌 루프에 내는
+        # RuntimeError를 흉내낸다.
+        raise RuntimeError("progress consumer died")
+
+    # 콜백이 매번 터져도 렌더(mp4)가 본체이므로 run()은 예외 없이 정상 종료돼야 한다.
+    await run(cmd, cwd=str(tmp_path), on_progress=_raising_on_progress, total_sec=10.0)
+
+    assert len(seen_percents) == 3  # 콜백 실패로 읽기 루프가 멈추지 않고 세 줄 다 처리했다
+    assert captured[0].poll() is not None  # wait()으로 회수됨 — 좀비/미회수로 안 남는다

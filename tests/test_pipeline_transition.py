@@ -14,6 +14,7 @@ from app.core import pipeline
 from app.db import raw_connection
 from app.models.user import User
 from app.queries import queries
+from app.utils.errors import AppError
 from app.utils.time import now_local
 
 
@@ -142,6 +143,61 @@ async def test_reapproving_does_not_duplicate_next_stage(db_session):
 
     stages = [dict(r) async for r in queries.list_stages_by_project(conn, project_id=project["id"])]
     assert [s["name"] for s in stages].count(StageName.VOICE) == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_approve_does_not_duplicate_next_stage(db_session):
+    """승인 더블클릭(I-2 시나리오 A): 두 요청 A·B가 같은 NEEDS_REVIEW 스냅숏을 읽고
+    둘 다 can_transition 게이트를 통과한 상황을 재현한다(여기서는 A가 먼저 approve_stage로
+    실제 승인을 끝낸 뒤, B가 뒤늦게 같은 낡은 스냅숏으로 도착한 상황). 상태 술어 없는
+    UPDATE였다면 B도 blind하게 성공해 각자 find_stage(next) is None을 참으로 보고
+    voice 행을 두 개 INSERT했을 것이다.
+    """
+    actor, project, script = await _seed_script_needs_review(
+        db_session, "concurrent-approve@example.com"
+    )
+
+    # A: 정상적으로 승인 — CAS가 걸리고 voice가 PENDING으로 한 번 등록된다.
+    await pipeline.approve_stage(db_session, project, script, actor_id=actor)
+
+    # B: 같은 낡은 NEEDS_REVIEW 스냅숏을 들고 뒤늦게 도착 — can_transition 게이트는
+    # 통과하지만 DB의 CAS(WHERE status = 'NEEDS_REVIEW')가 실제 상태(APPROVED)와
+    # 안 맞아 거절해야 한다.
+    with pytest.raises(AppError) as exc_info:
+        await pipeline.approve_stage(db_session, project, script, actor_id=actor)
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.code == "STAGE_CONFLICT"
+
+    conn = await raw_connection(db_session)
+    stages = [dict(r) async for r in queries.list_stages_by_project(conn, project_id=project["id"])]
+    assert [s["name"] for s in stages].count(StageName.VOICE) == 1
+
+
+@pytest.mark.asyncio
+async def test_approve_loses_to_regenerate_race(db_session):
+    """I-2 시나리오 B: auto_run이 자동 승인하려는 순간 사용자가 [재생성]을 먼저 접수하면
+    (NEEDS_REVIEW → PENDING → QUEUED), 낡은 NEEDS_REVIEW 스냅숏을 든 채 뒤늦게 도착한
+    approve_stage는 그 QUEUED를 덮어쓰면 안 되고 409로 거절돼야 한다 — 그러지 않으면
+    사용자가 명시적으로 요청한 재생성이 조용히 삼켜진다.
+    """
+    actor, project, script = await _seed_script_needs_review(
+        db_session, "approve-vs-regen@example.com"
+    )
+
+    # 사용자가 먼저 재생성을 접수한다 — NEEDS_REVIEW → PENDING → QUEUED.
+    await pipeline.regenerate_stage(db_session, script, actor_id=actor)
+    conn = await raw_connection(db_session)
+    queued = pipeline.decode_stage(await queries.find_stage_by_id(conn, id=script["id"]))
+    assert queued["status"] == StageStatus.QUEUED
+
+    # 워커의 자동 승인이 낡은 NEEDS_REVIEW 스냅숏(script)을 들고 뒤늦게 도착한다.
+    with pytest.raises(AppError) as exc_info:
+        await pipeline.approve_stage(db_session, project, script, actor_id=actor)
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.code == "STAGE_CONFLICT"
+
+    still_queued = pipeline.decode_stage(await queries.find_stage_by_id(conn, id=script["id"]))
+    assert still_queued["status"] == StageStatus.QUEUED
 
 
 @pytest.mark.asyncio

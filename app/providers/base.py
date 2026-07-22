@@ -1,12 +1,17 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from app.utils.errors import AppError
 
 
+def noop_progress(percent: float | None, message: str) -> None:
+    """기본 진행률 콜백. provider가 진행률을 안 내도 그냥 돌게 한다."""
+
+
 @dataclass
 class StageContext:
-    """단계 실행에 필요한 입력. (SSE on_progress는 해당 단계 도입 시 확장)"""
+    """단계 실행에 필요한 입력."""
 
     topic: str
     settings: dict = field(default_factory=dict)
@@ -14,6 +19,9 @@ class StageContext:
     input_assets: dict = field(default_factory=dict)  # {단계이름: [{kind, path, meta}]} 파일 산출물
     attempt: int = 0  # 재생성 횟수 → provider 출력 변주 seed
     workdir: str = ""  # 저장소 기준 이 단계의 디렉토리 (파일을 만드는 단계만 사용)
+    # 진행 상황 보고. percent가 None이면 진짜 진행률이 없다는 뜻(메시지만 쓴다).
+    # 워커 스레드에서 호출될 수 있으므로 구현은 스레드 안전해야 한다.
+    on_progress: Callable[[float | None, str], None] = noop_progress
 
 
 @dataclass

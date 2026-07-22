@@ -80,6 +80,16 @@ async def test_run_raises_script_parse_failed_when_parsed_is_none():
     assert exc.value.code == "SCRIPT_PARSE_FAILED"
 
 
+@pytest.mark.asyncio
+async def test_run_reports_progress_without_percent():
+    # LLM 단일 호출이라 진짜 %가 없다 — percent=None 계약을 고정한다(0 같은 값 발명 금지).
+    fake = _FakeOpenAI(_DRAFT)
+    seen: list[tuple[float | None, str]] = []
+    ctx = StageContext(topic="바다 거북", on_progress=lambda p, m: seen.append((p, m)))
+    await OpenAIScript(client=fake).run(ctx)
+    assert seen == [(None, "대본을 생성하는 중…")]
+
+
 def test_real_openai_sdk_exposes_beta_parse_path():
     # M-1: 코드가 가정한 client.beta.chat.completions.parse 경로가 설치된 openai SDK에 실제로 존재하는지 확인.
     # 네트워크 호출 없음 — 생성자 + 속성 존재 여부만 확인.
