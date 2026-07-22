@@ -31,7 +31,8 @@
 | 패키지 매니저 | npm |
 
 ### 인프라
-- **PostgreSQL 하나로 통일** — 데이터 저장 + (향후) 작업 큐(procrastinate)까지 담당해 Redis 불필요. 로컬은 `docker compose`로 기동.
+- **PostgreSQL 하나로 통일** — 데이터 저장과 작업 큐(`stages` 테이블)를 모두 담당해 Redis가 필요 없다. 로컬은 `docker compose`로 기동.
+- **단계 실행은 앱 내 백그라운드 워커**가 맡는다(`app/core/worker.py`). 별도 프로세스 없이 FastAPI `lifespan`에서 함께 뜨고, 상태·진행률은 SSE(`GET /api/projects/{id}/events`)로 UI에 푸시된다. 동시 실행 수는 `.env`의 `WORKER_CONCURRENCY`(기본 1)로 조절한다.
 
 ## 개발 실행
 
@@ -117,6 +118,8 @@ Vite dev 서버가 `/auth`, `/admin/users`, `/health` 요청을 `http://localhos
 - 프록시 접두사(`/auth`, `/admin/users`, `/health`) **아래에는 프론트 라우트를 만들지 않는다.** 주소창 입력·새로고침이 API로 넘어가 SPA 대신 JSON 404가 뜬다.
 
 프론트를 별도 도메인/CDN에 올려야 한다면, **CORS를 켜기 전에 CSRF 방어부터 설계할 것.** 반사적으로 `CORSMiddleware` + `SameSite=None`을 켜면 이 설계의 XSS·CSRF 방어가 무너진다.
+
+> 앱이 뜰 때 이전 실행에서 `RUNNING`으로 남은 단계는 자동으로 실패 처리된다(중간 산출물 상태를 알 수 없기 때문). 상세 화면에서 다시 실행하면 된다.
 
 ## 테스트
 
