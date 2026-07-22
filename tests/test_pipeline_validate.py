@@ -39,6 +39,14 @@ async def _seed_openai_stage(session, provider="openai"):
     return user.id, project, stage
 
 
+async def _run_to_completion(session, project, stage, actor):
+    """queue → claim → run 전체를 밟아 단계를 완료시킨다."""
+    assert await pipeline.queue_stage(session, stage["id"], actor_id=actor)
+    claimed = await pipeline.claim_stage(session, stage["id"], actor_id=actor)
+    assert claimed is not None
+    return await pipeline.run_claimed_stage(session, project, claimed, actor_id=actor)
+
+
 @pytest.mark.asyncio
 async def test_run_stage_fails_friendly_when_openai_key_missing(db_session, monkeypatch):
     # OpenAIScript.validate가 참조하는 설정의 키를 비운다 → 실행 시 FAILED(친절 메시지), network 미접속
@@ -47,7 +55,7 @@ async def test_run_stage_fails_friendly_when_openai_key_missing(db_session, monk
         lambda: __import__("types").SimpleNamespace(openai_api_key=""),
     )
     actor, project, stage = await _seed_openai_stage(db_session)
-    updated = await pipeline.run_stage(db_session, project, stage, actor_id=actor)
+    updated = await _run_to_completion(db_session, project, stage, actor)
     assert updated["status"] == StageStatus.FAILED
     assert updated["error"] == "OPENAI_API_KEY가 설정되지 않았습니다."
 
@@ -60,7 +68,7 @@ async def test_run_stage_fails_friendly_when_claude_key_missing(db_session, monk
         lambda: __import__("types").SimpleNamespace(anthropic_api_key=""),
     )
     actor, project, stage = await _seed_openai_stage(db_session, provider="claude")
-    updated = await pipeline.run_stage(db_session, project, stage, actor_id=actor)
+    updated = await _run_to_completion(db_session, project, stage, actor)
     assert updated["status"] == StageStatus.FAILED
     assert updated["error"] == "ANTHROPIC_API_KEY가 설정되지 않았습니다."
 
@@ -69,6 +77,6 @@ async def test_run_stage_fails_friendly_when_claude_key_missing(db_session, monk
 async def test_run_stage_fails_cleanly_when_provider_unknown(db_session):
     # SCRIPT_PROVIDER 오타 등으로 존재하지 않는 provider가 저장된 경우 500이 아니라 FAILED로 흡수돼야 한다(I-1).
     actor, project, stage = await _seed_openai_stage(db_session, provider="nope")
-    updated = await pipeline.run_stage(db_session, project, stage, actor_id=actor)
+    updated = await _run_to_completion(db_session, project, stage, actor)
     assert updated["status"] == StageStatus.FAILED
     assert "provider를 찾을 수 없습니다" in updated["error"]

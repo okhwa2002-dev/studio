@@ -17,13 +17,30 @@ async def _login(client, db_session, email: str) -> User:
     return user
 
 
-async def _project_with_voice_run(client) -> int:
-    """프로젝트 생성 → script 실행·승인 → voice 실행. (conftest가 provider를 fake로 강제)"""
+async def _drain(db_session, stage_id: int):
+    """API는 큐에 넣기만 한다. 테스트에서는 워커를 직접 한 번 돌려 완료시킨다."""
+    from contextlib import asynccontextmanager
+
+    from app.core.worker import StageWorker
+
+    @asynccontextmanager
+    async def _factory():
+        yield db_session
+
+    await StageWorker(session_factory=_factory).run_one(stage_id)
+
+
+async def _project_with_voice_run(client, db_session) -> int:
+    """프로젝트 생성 → script 실행·승인 → voice 실행(큐 드레인까지). (conftest가 provider를 fake로 강제)"""
     detail = (await client.post("/api/projects", json={"title": "t", "topic": "주제"})).json()
     pid = detail["project"]["id"]
-    await client.post(f"/api/projects/{pid}/stages/script/run")
+    script_run = await client.post(f"/api/projects/{pid}/stages/script/run")
+    script_id = next(s for s in script_run.json()["stages"] if s["name"] == "script")["id"]
+    await _drain(db_session, script_id)
     await client.post(f"/api/projects/{pid}/stages/script/approve")
-    await client.post(f"/api/projects/{pid}/stages/voice/run")
+    voice_run = await client.post(f"/api/projects/{pid}/stages/voice/run")
+    voice_id = next(s for s in voice_run.json()["stages"] if s["name"] == "voice")["id"]
+    await _drain(db_session, voice_id)
     return pid
 
 
@@ -32,7 +49,7 @@ async def test_owner_downloads_audio(client, db_session, monkeypatch, tmp_path):
 
     monkeypatch.setattr(storage, "_root", lambda: tmp_path)
     await _login(client, db_session, "asset-owner@example.com")
-    pid = await _project_with_voice_run(client)
+    pid = await _project_with_voice_run(client, db_session)
 
     r = await client.get(f"/api/projects/{pid}/stages/voice/asset")
     assert r.status_code == 200
@@ -45,7 +62,7 @@ async def test_other_user_gets_404(client, db_session, monkeypatch, tmp_path):
 
     monkeypatch.setattr(storage, "_root", lambda: tmp_path)
     await _login(client, db_session, "asset-a@example.com")
-    pid = await _project_with_voice_run(client)
+    pid = await _project_with_voice_run(client, db_session)
 
     # 다른 사용자로 로그인(쿠키 교체) → 남의 프로젝트 산출물은 존재 자체를 숨긴다
     await _login(client, db_session, "asset-b@example.com")
@@ -60,14 +77,16 @@ async def test_regenerate_replaces_asset_and_stays_downloadable(client, db_sessi
 
     monkeypatch.setattr(storage, "_root", lambda: tmp_path)
     await _login(client, db_session, "asset-regen@example.com")
-    pid = await _project_with_voice_run(client)
+    pid = await _project_with_voice_run(client, db_session)
 
     first = await client.get(f"/api/projects/{pid}/stages/voice/asset")
     assert first.status_code == 200
     first_bytes = first.content
 
     regen = await client.post(f"/api/projects/{pid}/stages/voice/regenerate")
-    assert regen.status_code == 200
+    assert regen.status_code == 202
+    stage_id = next(s for s in regen.json()["stages"] if s["name"] == "voice")["id"]
+    await _drain(db_session, stage_id)
 
     second = await client.get(f"/api/projects/{pid}/stages/voice/asset")
     assert second.status_code == 200  # C1: 재생성 후에도 파일이 남아 있어야 한다

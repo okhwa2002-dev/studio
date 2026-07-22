@@ -26,6 +26,8 @@ class EdgeTTS(Provider):
         return self._communicate_factory
 
     async def run(self, ctx: StageContext) -> StageResult:
+        # edge-tts는 전체 길이를 알려주지 않는다 — 진짜 %가 없으므로 메시지만 보낸다.
+        ctx.on_progress(None, "음성 합성 중…")
         text = narration_text(ctx.inputs)
         communicate = self._factory()(text, _MODEL_VOICE)
         chunks = bytearray()

@@ -44,11 +44,15 @@ class SlideshowRender(Provider):
         out_abs = storage.resolve(out_rel)
         out_abs.parent.mkdir(parents=True, exist_ok=True)
 
+        # captions가 잰 길이를 진행률 분모로 쓴다. 없으면 %는 못 내고 메시지만 나간다.
+        duration = ctx.inputs.get("captions", {}).get("duration_sec")
+        ctx.on_progress(None, "영상 합성 중…")
         # cwd를 저장소 루트로 둬야 상대경로 자막 필터가 동작한다(Windows ':' 회피).
-        await self._runner(cmd, str(storage.resolve(".")))
+        await self._runner(
+            cmd, str(storage.resolve(".")), on_progress=ctx.on_progress, total_sec=duration
+        )
 
         size = out_abs.stat().st_size
-        duration = ctx.inputs.get("captions", {}).get("duration_sec")
         return StageResult(
             output={
                 "provider": "slideshow",

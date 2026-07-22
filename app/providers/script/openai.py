@@ -34,6 +34,7 @@ class OpenAIScript(Provider):
         return self._client
 
     async def run(self, ctx: StageContext) -> StageResult:
+        ctx.on_progress(None, "대본을 생성하는 중…")  # LLM 단일 호출이라 진짜 %가 없다
         client = self._get_client()
         completion = await client.beta.chat.completions.parse(
             model=_MODEL,

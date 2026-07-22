@@ -58,3 +58,16 @@ async def test_run_passes_narration_and_korean_voice(monkeypatch, tmp_path):
 
 def test_registry_has_edge_tts():
     assert REGISTRY["voice"]["edge_tts"] is EdgeTTS
+
+
+@pytest.mark.asyncio
+async def test_run_reports_message_without_percent(monkeypatch, tmp_path):
+    # edge-tts는 전체 길이를 알려주지 않는다 — 진짜 %가 없으므로 None을 보낸다.
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    seen: list[tuple[float | None, str]] = []
+    ctx = StageContext(
+        topic="t", inputs={"script": _SCRIPT}, workdir="projects/5/voice",
+        on_progress=lambda p, m: seen.append((p, m)),
+    )
+    await EdgeTTS(communicate_factory=_FakeCommunicate).run(ctx)
+    assert seen == [(None, "음성 합성 중…")]

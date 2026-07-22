@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -7,13 +8,26 @@ from app.api.health import router as health_router
 from app.api.projects import router as projects_router
 from app.auth.admin_router import router as admin_users_router
 from app.auth.router import router as auth_router
+from app.core.worker import get_worker
 from app.utils.errors import DEFAULT_ERROR, AppError
 from app.utils.logging import configure_logging
 
 configure_logging()
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Studio")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 단계 실행은 요청이 아니라 이 워커가 맡는다. 기동 시 고아 상태도 여기서 정리된다.
+    worker = get_worker()
+    await worker.start()
+    try:
+        yield
+    finally:
+        await worker.stop()
+
+
+app = FastAPI(title="Studio", lifespan=lifespan)
 # 모든 API는 /api 아래에 둔다. 이렇게 하면 프론트 SPA 라우트(/admin/users 등)와
 # 경로가 절대 겹치지 않아, 새로고침 시 문서 요청이 API로 새는 일이 없다
 # (개발: Vite 프록시가 /api만 넘긴다 / 운영: FastAPI가 dist를 서빙해도 충돌 없음).

@@ -38,6 +38,7 @@ class StageStatus(StrEnum):
     """stages.status 코드값. DB에 대문자로 저장된다."""
 
     PENDING = "PENDING"
+    QUEUED = "QUEUED"  # 실행 요청됨 — 워커가 아직 집지 않은 상태
     RUNNING = "RUNNING"
     NEEDS_REVIEW = "NEEDS_REVIEW"
     APPROVED = "APPROVED"

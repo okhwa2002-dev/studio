@@ -30,3 +30,12 @@ async def test_regeneration_changes_output():
     a = await FakeScript().run(StageContext(topic="주제", attempt=0))
     b = await FakeScript().run(StageContext(topic="주제", attempt=1))
     assert a.output != b.output
+
+
+@pytest.mark.asyncio
+async def test_run_reports_progress_without_percent():
+    # LLM 단일 호출이라 진짜 %가 없다 — percent=None 계약을 고정한다(0 같은 값 발명 금지).
+    seen: list[tuple[float | None, str]] = []
+    ctx = StageContext(topic="바다 거북", on_progress=lambda p, m: seen.append((p, m)))
+    await FakeScript().run(ctx)
+    assert seen == [(None, "대본을 생성하는 중…")]

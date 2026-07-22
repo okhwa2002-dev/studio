@@ -29,3 +29,13 @@ def test_render_settings_defaults(monkeypatch):
     assert s.render_bg_color == "#0f172a"
     assert s.render_font == "Malgun Gothic"
     assert s.render_font_size == 30
+
+
+def test_worker_concurrency_defaults_to_one(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/studio")
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.delenv("WORKER_CONCURRENCY", raising=False)
+    importlib.reload(config_module)
+    config_module.get_settings.cache_clear()
+
+    assert config_module.get_settings().worker_concurrency == 1
