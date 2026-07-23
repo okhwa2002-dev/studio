@@ -15,12 +15,21 @@ export type CaptionsOutput = {
   word_count: number
   words: CaptionWord[]
 }
+export type RenderSource = {
+  scene: number
+  source: string
+  kind: string
+  query: string
+  url: string
+  author: string
+}
 export type RenderOutput = {
   provider: string
   width: number
   height: number
   duration_sec: number | null
   size_bytes: number
+  sources?: RenderSource[]
 }
 export type StageStatus = 'PENDING' | 'QUEUED' | 'RUNNING' | 'NEEDS_REVIEW' | 'APPROVED' | 'FAILED'
 export type ProjectStatus = 'DRAFT' | 'REVIEW' | 'DONE'

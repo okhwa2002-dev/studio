@@ -39,3 +39,31 @@ def test_worker_concurrency_defaults_to_one(monkeypatch):
     config_module.get_settings.cache_clear()
 
     assert config_module.get_settings().worker_concurrency == 1
+
+
+def test_stock_settings_defaults(monkeypatch):
+    # app/config.py의 Settings는 env_file=".env"를 별도 소스로 읽기 때문에
+    # monkeypatch.delenv만으로는 개발자의 실제 .env 값(예: PEXELS_API_KEY)을 가릴 수 없다.
+    # _env_file=None으로 .env 로딩 자체를 끄고 Settings를 직접 생성해 격리한다.
+    # (DATABASE_URL·JWT_SECRET은 기본값이 없는 필수 필드라 env로 채워줘야 한다)
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/studio")
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+
+    s = config_module.Settings(_env_file=None)
+    assert s.pexels_api_key == ""
+    assert s.pixabay_api_key == ""
+    assert s.stock_sources == ["pexels", "pixabay"]   # 순서가 폴백 우선순위
+    assert s.stock_max_bytes == 52_428_800            # 50MB
+    assert s.stock_timeout_sec == 30
+
+
+def test_stock_sources_parsed_from_json_env(monkeypatch):
+    # CORS_ORIGINS와 같은 JSON 배열 표기. 순서를 바꿔 Pixabay를 먼저 쓸 수 있어야 한다.
+    # _env_file=None은 .env 파일 로딩만 끄고 os.environ은 그대로 읽으므로
+    # monkeypatch.setenv로 넣은 STOCK_SOURCES는 여전히 적용된다.
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/studio")
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setenv("STOCK_SOURCES", '["pixabay"]')
+
+    s = config_module.Settings(_env_file=None)
+    assert s.stock_sources == ["pixabay"]
