@@ -8,6 +8,22 @@ def ffmpeg_exe() -> str:
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 
+_FPS = 30
+
+
+def _style(font: str, font_size: int) -> str:
+    """자막 번인 스타일. slideshow와 stock이 공유한다.
+
+    Alignment=10 = 화면 정중앙. 번들 libass는 레거시 SSA 넘버링을 쓴다
+    (5는 좌상단, 10이 중앙) — 실제 렌더로 검증한 값이므로 5로 되돌리지 말 것.
+    """
+    return (
+        f"Fontname={font},Fontsize={font_size},"
+        "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+        "BorderStyle=1,Outline=3,Shadow=0,Alignment=10"
+    )
+
+
 def build_slideshow_cmd(
     *,
     exe: str,
@@ -26,14 +42,7 @@ def build_slideshow_cmd(
     subtitles 필터 구분자와 충돌하는 Windows 문제를 회피한다. 오디오는 필터가
     아니라 -i 입력이라 절대경로여도 안전하다.
     """
-    # Alignment=10 = 화면 정중앙. 번들 libass는 레거시 SSA 넘버링을 쓴다
-    # (5는 좌상단, 10이 중앙) — 실제 렌더로 검증한 값이므로 5로 되돌리지 말 것.
-    style = (
-        f"Fontname={font},Fontsize={font_size},"
-        "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-        "BorderStyle=1,Outline=3,Shadow=0,Alignment=10"
-    )
-    vf = f"subtitles={srt_rel}:force_style='{style}'"
+    vf = f"subtitles={srt_rel}:force_style='{_style(font, font_size)}'"
     return [
         exe, "-y",
         "-progress", "pipe:1",   # 진행 상황을 stdout으로 — 아래 run()이 파싱한다
@@ -44,6 +53,60 @@ def build_slideshow_cmd(
         "-c:a", "aac", "-shortest",
         out_rel,
     ]
+
+
+def build_stock_cmd(
+    *,
+    exe: str,
+    scenes: list[dict],
+    audio_abs: str,
+    srt_rel: str,
+    out_rel: str,
+    width: int,
+    height: int,
+    font: str,
+    font_size: int,
+) -> list[str]:
+    """씬별 스톡 소재를 이어붙이고 자막을 번인해 9:16 mp4를 만드는 ffmpeg 인자.
+
+    scenes 항목: {"path": 저장소 상대경로, "kind": "video"|"photo", "seconds": float}
+
+    길이 정합은 전적으로 입력 옵션이 맡는다 — 영상은 -stream_loop로 무한 반복시킨 뒤
+    -t로 자르고, 이미지는 -loop 1 -t로 정지 영상을 늘린다. 덕분에 필터에 trim이
+    없어도 각 스트림이 정확히 씬 길이가 된다.
+
+    자막·출력은 build_slideshow_cmd와 같은 이유로 cwd(저장소 루트) 기준 상대경로다.
+    오디오는 필터가 아니라 -i 입력이라 절대경로여도 안전하다.
+    """
+    cmd = [exe, "-y", "-progress", "pipe:1"]
+    for scene in scenes:
+        seconds = f"{scene['seconds']:.3f}"
+        if scene["kind"] == "photo":
+            cmd += ["-loop", "1", "-t", seconds, "-i", scene["path"]]
+        else:
+            cmd += ["-stream_loop", "-1", "-t", seconds, "-i", scene["path"]]
+    cmd += ["-i", audio_abs]
+
+    # 소재마다 해상도·비율·fps·SAR이 제각각이라 concat 전에 전부 같은 규격으로 맞춘다.
+    # 하나라도 어긋나면 concat 필터가 실패한다.
+    chains = [
+        f"[{i}:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},fps={_FPS},setsar=1,setpts=PTS-STARTPTS[v{i}]"
+        for i in range(len(scenes))
+    ]
+    labels = "".join(f"[v{i}]" for i in range(len(scenes)))
+    chains.append(f"{labels}concat=n={len(scenes)}:v=1:a=0[bg]")
+    chains.append(f"[bg]subtitles={srt_rel}:force_style='{_style(font, font_size)}'[v]")
+
+    cmd += [
+        "-filter_complex", ";".join(chains),
+        # 스톡 클립의 오디오는 버리고 나레이션만 싣는다. 오디오는 씬 다음 입력이다.
+        "-map", "[v]", "-map", f"{len(scenes)}:a",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-shortest",
+        out_rel,
+    ]
+    return cmd
 
 
 def parse_progress_percent(line: str, total_sec: float | None) -> float | None:

@@ -31,3 +31,25 @@ def test_resolve_rejects_escaping_path(monkeypatch, tmp_path):
 
     with pytest.raises(ValueError):
         storage.resolve("../secrets.txt")
+
+
+def test_clear_dir_removes_files_and_is_idempotent(monkeypatch, tmp_path):
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    storage.write_bytes("projects/3/render/sources/scene1.mp4", b"a")
+    storage.write_bytes("projects/3/render/sources/scene2.jpg", b"b")
+
+    storage.clear_dir("projects/3/render/sources")
+    assert list((tmp_path / "projects/3/render/sources").iterdir()) == []
+
+    storage.clear_dir("projects/3/render/sources")          # 두 번째도 통과
+    storage.clear_dir("projects/3/render/does-not-exist")   # 없는 디렉토리도 통과
+
+
+def test_clear_dir_leaves_sibling_files(monkeypatch, tmp_path):
+    # 소재만 지우고 같은 단계의 render.mp4는 건드리지 않아야 한다
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    storage.write_bytes("projects/3/render/render.mp4", b"keep")
+    storage.write_bytes("projects/3/render/sources/scene1.mp4", b"drop")
+
+    storage.clear_dir("projects/3/render/sources")
+    assert (tmp_path / "projects/3/render/render.mp4").read_bytes() == b"keep"

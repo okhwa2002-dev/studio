@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from app.utils.ffmpeg import build_slideshow_cmd, parse_progress_percent
+from app.utils.ffmpeg import build_slideshow_cmd, build_stock_cmd, parse_progress_percent
 
 
 def _cmd():
@@ -120,3 +120,85 @@ async def test_run_reaps_process_and_keeps_reading_when_on_progress_raises(monke
 
     assert len(seen_percents) == 3  # 콜백 실패로 읽기 루프가 멈추지 않고 세 줄 다 처리했다
     assert captured[0].poll() is not None  # wait()으로 회수됨 — 좀비/미회수로 안 남는다
+
+
+_SCENES = [
+    {"path": "projects/9/render/sources/scene1.mp4", "kind": "video", "seconds": 8.0},
+    {"path": "projects/9/render/sources/scene2.jpg", "kind": "photo", "seconds": 12.0},
+    {"path": "projects/9/render/sources/scene3.mp4", "kind": "video", "seconds": 10.0},
+]
+
+
+def _stock_cmd(scenes=None):
+    return build_stock_cmd(
+        exe="/bin/ffmpeg",
+        scenes=scenes if scenes is not None else _SCENES,
+        audio_abs="/abs/storage/projects/9/voice/voice.mp3",
+        srt_rel="projects/9/captions/captions.srt",
+        out_rel="projects/9/render/render.mp4",
+        width=1080, height=1920,
+        font="Malgun Gothic", font_size=30,
+    )
+
+
+def test_video_scene_loops_and_is_trimmed_by_input_options():
+    # 클립이 씬보다 짧으면 반복, 길면 잘린다 — 필터에 trim이 필요 없어진다
+    cmd = _stock_cmd()
+    i = cmd.index("projects/9/render/sources/scene1.mp4")
+    assert cmd[i - 5:i] == ["-stream_loop", "-1", "-t", "8.000", "-i"]
+
+
+def test_photo_scene_uses_loop_1():
+    cmd = _stock_cmd()
+    i = cmd.index("projects/9/render/sources/scene2.jpg")
+    assert cmd[i - 5:i] == ["-loop", "1", "-t", "12.000", "-i"]
+
+
+def test_audio_is_last_input_and_mapped_by_index():
+    # 씬 3개면 오디오는 3번 입력. 스톡 클립의 오디오는 map에서 빠져 나레이션만 남는다
+    cmd = _stock_cmd()
+    assert cmd[cmd.index("/abs/storage/projects/9/voice/voice.mp3") - 1] == "-i"
+    assert cmd[cmd.index("-map") + 1] == "[v]"
+    assert "3:a" in cmd
+    assert "0:a" not in cmd
+
+
+def _filter_of(cmd):
+    return cmd[cmd.index("-filter_complex") + 1]
+
+
+def test_filter_normalizes_every_scene_then_concats():
+    vf = _filter_of(_stock_cmd())
+    for i in range(3):
+        assert (f"[{i}:v]scale=1080:1920:force_original_aspect_ratio=increase,"
+                f"crop=1080:1920,fps=30,setsar=1,setpts=PTS-STARTPTS[v{i}]") in vf
+    assert "[v0][v1][v2]concat=n=3:v=1:a=0[bg]" in vf
+
+
+def test_subtitles_use_relative_path_and_shared_style():
+    # 드라이브 문자 ':'가 subtitles 필터 구분자와 충돌하는 Windows 문제 회피
+    vf = _filter_of(_stock_cmd())
+    assert "[bg]subtitles=projects/9/captions/captions.srt:force_style=" in vf
+    assert "Fontname=Malgun Gothic" in vf
+    assert "Fontsize=30" in vf
+    assert "Alignment=10" in vf   # slideshow와 같은 정중앙 값
+
+
+def test_output_is_browser_compatible_h264_and_relative():
+    cmd = _stock_cmd()
+    assert cmd[-1] == "projects/9/render/render.mp4"
+    for flag in ("-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest"):
+        assert flag in cmd
+    assert cmd[:4] == ["/bin/ffmpeg", "-y", "-progress", "pipe:1"]
+
+
+def test_single_scene_still_concats():
+    vf = _filter_of(_stock_cmd([_SCENES[0]]))
+    assert "[v0]concat=n=1:v=1:a=0[bg]" in vf
+
+
+def test_ten_scenes_stay_well_under_windows_command_limit():
+    # 리스크: 필터 문자열이 씬 수에 비례해 길어진다. Windows 한계는 약 32768자.
+    scenes = [{"path": f"projects/9/render/sources/scene{i}.mp4", "kind": "video", "seconds": 3.0}
+              for i in range(1, 11)]
+    assert len(" ".join(_stock_cmd(scenes))) < 8000

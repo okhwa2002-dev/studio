@@ -1744,6 +1744,7 @@ dependencies = [
     { name = "edge-tts" },
     { name = "fastapi" },
     { name = "faster-whisper" },
+    { name = "httpx" },
     { name = "imageio-ffmpeg" },
     { name = "openai" },
     { name = "pydantic-settings" },
@@ -1755,7 +1756,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "testcontainers" },
@@ -1771,6 +1771,7 @@ requires-dist = [
     { name = "edge-tts", specifier = ">=7.2.8" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "faster-whisper", specifier = ">=1.1.0" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "imageio-ffmpeg", specifier = ">=0.6.0" },
     { name = "openai", specifier = ">=2.45.0" },
     { name = "pydantic-settings", specifier = ">=2.6" },
@@ -1782,7 +1783,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "testcontainers", extras = ["postgres"], specifier = ">=4.8" },

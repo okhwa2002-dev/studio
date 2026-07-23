@@ -28,3 +28,18 @@ def write_bytes(rel: str, data: bytes) -> int:
 def delete(rel: str) -> None:
     """파일을 지운다. 이미 없어도 조용히 통과한다(멱등)."""
     resolve(rel).unlink(missing_ok=True)
+
+
+def clear_dir(rel: str) -> None:
+    """디렉토리 안의 파일을 모두 지운다. 없어도 조용히 통과한다(멱등).
+
+    stock 렌더러가 재실행될 때 이전 소재를 남기지 않기 위한 것. 소재는 asset으로
+    기록하지 않아 _replace_assets가 지워주지 않으므로 provider가 직접 비운다.
+    하위 디렉토리는 건드리지 않는다 — 소재는 평평하게 저장된다.
+    """
+    path = resolve(rel)
+    if not path.is_dir():
+        return
+    for child in path.iterdir():
+        if child.is_file():
+            child.unlink(missing_ok=True)

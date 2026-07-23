@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     render_font_size: int = 30
     # whisper·ffmpeg는 CPU를 포화시킨다. 병렬로 돌려도 서로 느려지기만 하므로 기본 1.
     worker_concurrency: int = 1
+    # 스톡 소재(Pexels·Pixabay). 키가 하나도 없으면 stock 렌더러는 validate에서 실패한다.
+    pexels_api_key: str = ""
+    pixabay_api_key: str = ""
+    stock_sources: list[str] = ["pexels", "pixabay"]  # 순서가 폴백 우선순위
+    stock_max_bytes: int = 52_428_800                 # 씬당 다운로드 상한 50MB
+    stock_timeout_sec: int = 30
 
 
 @lru_cache

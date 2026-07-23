@@ -133,6 +133,27 @@ function RenderView({ projectId, stage }: { projectId: number; stage: Stage }) {
         {stage.output.width}×{stage.output.height}
         {stage.output.duration_sec != null && ` · ${stage.output.duration_sec.toFixed(1)}초`}
       </div>
+      {stage.output.sources && stage.output.sources.length > 0 && (
+        <div className="space-y-1 border-t border-slate-100 pt-2">
+          <div className="text-xs font-medium text-slate-500">소재 출처</div>
+          <ul className="space-y-0.5">
+            {stage.output.sources.map((source) => (
+              <li key={source.scene} className="text-xs text-slate-400">
+                #{source.scene}{' '}
+                <a
+                  href={source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline hover:text-slate-600"
+                >
+                  {source.source === 'pexels' ? 'Pexels' : 'Pixabay'}
+                </a>
+                {source.author && ` · ${source.author}`}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
