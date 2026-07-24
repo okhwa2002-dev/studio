@@ -47,4 +47,26 @@ async def test_me_does_not_leak_password_hash(client, db_session):
 
     resp = await client.get("/api/auth/me")
     assert resp.status_code == 200
-    assert set(resp.json().keys()) == {"id", "email", "role"}
+    assert set(resp.json().keys()) == {"id", "email", "role", "name"}
+
+
+async def test_me_returns_name(client, db_session):
+    user = User(
+        email="mename@example.com",
+        password_hash=hash_password("pw12345"),
+        role=UserRole.MEMBER,
+        status=UserStatus.ACTIVE,
+        name="이영희",
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/auth/login", json={"email": "mename@example.com", "password": "pw12345"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "이영희"   # 로그인 응답에도 실려야 한다(프론트가 이걸 그대로 쓴다)
+
+    resp = await client.get("/api/auth/me")
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "이영희"

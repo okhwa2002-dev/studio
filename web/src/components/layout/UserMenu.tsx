@@ -21,7 +21,7 @@ export function UserMenu() {
   return (
     <div className="flex items-center gap-3 text-sm">
       <span className="text-slate-600">
-        {user?.email} · {user?.role}
+        {user?.name} · {user?.role}
       </span>
       <button
         onClick={onLogout}

@@ -19,7 +19,7 @@ from app.config import get_settings
 from app.constants import UserRole, UserStatus
 from app.db import get_db, raw_connection
 from app.queries import queries
-from app.utils.errors import Errors
+from app.utils.errors import AppError, Errors
 from app.utils.time import now_local
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -33,14 +33,22 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _DUMMY_PASSWORD_HASH = hash_password("dummy-password-for-timing-safety")
 
 
+_NAME_MAX_LEN = 50
+
+
 class RegisterRequest(BaseModel):
     email: str
     password: str
+    name: str
 
 
 @router.post("/register", status_code=201)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     email = body.email.strip().lower()
+    # 이름은 표시용이라 lower()하지 않는다(email과 다르다). 공백만 입력은 거부.
+    name = body.name.strip()
+    if not name or len(name) > _NAME_MAX_LEN:
+        raise AppError(400, "INVALID_NAME", "이름은 1~50자로 입력해 주세요.")
     conn = await raw_connection(db)
     existing = await queries.find_by_email(conn, email=email)
     if existing is not None:
@@ -51,6 +59,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
         user_id = await queries.insert_user(
             conn,
             email=email,
+            name=name,
             password_hash=hash_password(body.password),
             role=UserRole.MEMBER,
             status=UserStatus.PENDING,
@@ -141,7 +150,7 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
     await db.commit()
 
     _set_auth_cookies(response, access_token, refresh_token)
-    return {"id": row["id"], "email": row["email"], "role": row["role"]}
+    return {"id": row["id"], "email": row["email"], "role": row["role"], "name": row["name"]}
 
 
 @router.post("/refresh")
@@ -206,4 +215,4 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
 async def me(user: dict = Depends(current_user)):
     # current_user가 쿠키 검증·상태 확인·password_hash 제거까지 이미 수행한다.
     # 여기서는 프론트가 실제로 쓰는 필드만 골라 내보낸다(감사 컬럼·approved_by 등 미노출).
-    return {"id": user["id"], "email": user["email"], "role": user["role"]}
+    return {"id": user["id"], "email": user["email"], "role": user["role"], "name": user["name"]}
