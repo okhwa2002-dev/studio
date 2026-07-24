@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,6 +35,13 @@ class Settings(BaseSettings):
     stock_sources: list[str] = ["pexels", "pixabay"]  # 순서가 폴백 우선순위
     stock_max_bytes: int = 52_428_800                 # 씬당 다운로드 상한 50MB
     stock_timeout_sec: int = 30
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def _jwt_secret_at_least_32_bytes(cls, value: str) -> str:
+        if len(value.encode("utf-8")) < 32:
+            raise ValueError("JWT_SECRET must be at least 32 bytes")
+        return value
 
 
 @lru_cache
