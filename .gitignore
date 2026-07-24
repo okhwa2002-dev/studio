@@ -3,6 +3,8 @@
 
 # env & secrets
 .env
+.env.*
+!.env.example
 *.local
 
 # python

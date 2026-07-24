@@ -1,15 +1,12 @@
-import importlib
-
 import app.config as config_module
 
 
 def test_settings_loads_from_env(monkeypatch):
+    # env var가 실제로 반영되는지가 요지다. .env는 꺼서 개발자 로컬 값이 섞이지 않게 한다.
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/studio")
     monkeypatch.setenv("JWT_SECRET", "test-secret")
-    importlib.reload(config_module)
-    config_module.get_settings.cache_clear()
 
-    s = config_module.get_settings()
+    s = config_module.Settings(_env_file=None)
     assert s.database_url == "postgresql+asyncpg://u:p@localhost:5432/studio"
     assert s.jwt_secret == "test-secret"
     assert s.app_timezone == "Asia/Seoul"      # 기본값
@@ -18,13 +15,14 @@ def test_settings_loads_from_env(monkeypatch):
 
 
 def test_render_settings_defaults(monkeypatch):
+    # 코드 기본값 검증이라 값이 올 수 있는 두 소스를 모두 막아야 한다:
+    #   delenv        → conftest가 심어둔 os.environ["RENDER_PROVIDER"]="fake"
+    #   _env_file=None → 개발자의 실제 .env (예: RENDER_PROVIDER=stock). delenv로는 못 막는다.
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/studio")
     monkeypatch.setenv("JWT_SECRET", "test-secret")
     monkeypatch.delenv("RENDER_PROVIDER", raising=False)
-    importlib.reload(config_module)
-    config_module.get_settings.cache_clear()
 
-    s = config_module.get_settings()
+    s = config_module.Settings(_env_file=None)
     assert s.render_provider == "slideshow"
     assert s.render_bg_color == "#0f172a"
     assert s.render_font == "Malgun Gothic"
@@ -35,10 +33,8 @@ def test_worker_concurrency_defaults_to_one(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/studio")
     monkeypatch.setenv("JWT_SECRET", "test-secret")
     monkeypatch.delenv("WORKER_CONCURRENCY", raising=False)
-    importlib.reload(config_module)
-    config_module.get_settings.cache_clear()
 
-    assert config_module.get_settings().worker_concurrency == 1
+    assert config_module.Settings(_env_file=None).worker_concurrency == 1
 
 
 def test_stock_settings_defaults(monkeypatch):

@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { FormError } from '../../components/FormError'
 import { ApiError } from '../../lib/api'
 import { subscribeProject, type StageProgress } from '../../lib/events'
-import { hasCaptions, hasRender, hasScript, hasVoice, projects, STAGE_BADGE, type ProjectDetail as Detail, type Stage } from '../../lib/projects'
+import { hasCaptions, hasRender, hasScript, hasVoice, projects, STAGE_BADGE, STAGE_LABEL, type ProjectDetail as Detail, type Stage } from '../../lib/projects'
 
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
@@ -37,11 +37,10 @@ function ScriptView({ stage }: { stage: Stage }) {
   )
 }
 
-const STAGE_LABEL: Record<string, string> = {
-  script: '대본 (script)',
-  voice: '음성 (voice)',
-  captions: '자막 (captions)',
-  render: '영상 (render)',
+// 라벨은 lib/projects의 STAGE_LABEL 하나로 관리하고, 상세에서만 원본 단계명을 괄호로 덧붙인다.
+function stageTitle(name: string) {
+  const label = STAGE_LABEL[name]
+  return label ? `${label} (${name})` : name
 }
 
 function VoiceView({ projectId, stage }: { projectId: number; stage: Stage }) {
@@ -205,7 +204,7 @@ function StageCard({
     <div className="mt-4 rounded-lg border border-slate-200 p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-slate-800">{STAGE_LABEL[stage.name] ?? stage.name}</span>
+          <span className="font-medium text-slate-800">{stageTitle(stage.name)}</span>
           <StageBadge status={stage.status} />
         </div>
         <div className="flex gap-2">

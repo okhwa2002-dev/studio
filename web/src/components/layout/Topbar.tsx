@@ -1,5 +1,4 @@
-import { useLocation } from 'react-router-dom'
-import { navTitle } from '../../lib/nav'
+import { Logo } from './Logo'
 import { UserMenu } from './UserMenu'
 
 type Props = {
@@ -7,9 +6,9 @@ type Props = {
   onToggleMenu: () => void
 }
 
+// 상단바는 브랜드와 전역 조작(메뉴·사용자)만 맡는다.
+// "지금 어디인지"는 본문 상단의 제목이 알려준다(AppLayout).
 export function Topbar({ menuOpen, onToggleMenu }: Props) {
-  const { pathname } = useLocation()
-
   return (
     <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
       <div className="flex items-center gap-3">
@@ -22,7 +21,7 @@ export function Topbar({ menuOpen, onToggleMenu }: Props) {
         >
           ☰
         </button>
-        <h1 className="text-base font-semibold text-slate-900">{navTitle(pathname)}</h1>
+        <Logo />
       </div>
       <UserMenu />
     </header>

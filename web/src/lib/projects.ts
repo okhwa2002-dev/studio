@@ -70,6 +70,14 @@ export const projects = {
     `/api/projects/${id}/stages/${name}/asset?v=${attempt}`,
 }
 
+// 단계 이름 → 한국어 라벨. 목록(현재 단계 컬럼)과 상세(단계 카드 제목)가 함께 쓴다.
+export const STAGE_LABEL: Record<string, string> = {
+  script: '대본',
+  voice: '음성',
+  captions: '자막',
+  render: '영상',
+}
+
 export const STAGE_BADGE: Record<StageStatus, { label: string; className: string }> = {
   PENDING: { label: '대기', className: 'bg-slate-100 text-slate-600' },
   QUEUED: { label: '대기열', className: 'bg-indigo-100 text-indigo-800' },
