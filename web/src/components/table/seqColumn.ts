@@ -5,7 +5,7 @@ import type { Column } from './Table'
 // 새 항목이 앞에 추가돼도 기존 항목의 번호는 그대로다 — 오름차순이면 전부 밀린다.
 export function seqColumn<T>(total: number, page: number, pageSize: number): Column<T> {
   return {
-    header: '순번',
+    header: 'No',
     cell: (_row, index) => total - ((page - 1) * pageSize + index),
     align: 'center',
   }
