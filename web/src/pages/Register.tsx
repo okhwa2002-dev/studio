@@ -8,14 +8,19 @@ import { ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
 type FieldErrors = {
+  name?: string
   email?: string
   password?: string
   confirm?: string
 }
 
 // 클라이언트 검증은 UX 보조일 뿐 신뢰 경계가 아니다. 진짜 검증은 서버가 한다.
-function validate(email: string, password: string, confirm: string): FieldErrors {
+function validate(name: string, email: string, password: string, confirm: string): FieldErrors {
   const errors: FieldErrors = {}
+  const trimmed = name.trim()
+  if (trimmed.length < 1 || trimmed.length > 50) {
+    errors.name = '이름은 1~50자로 입력해 주세요.'
+  }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = '올바른 이메일 형식이 아닙니다.'
   }
@@ -32,6 +37,7 @@ export function Register() {
   const { register } = useAuth()
   const navigate = useNavigate()
 
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -43,13 +49,13 @@ export function Register() {
     event.preventDefault()
     setError(undefined)
 
-    const errors = validate(email, password, confirm)
+    const errors = validate(name, email, password, confirm)
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) return
 
     setPending(true)
     try {
-      await register(email, password)
+      await register(email, password, name.trim())
       // 가입한 사용자는 status=pending이라 로그인할 수 없다. 대기 안내로 보낸다.
       navigate('/pending', { replace: true })
     } catch (e) {
@@ -64,6 +70,15 @@ export function Register() {
     <AuthCard title="회원가입">
       <form onSubmit={onSubmit} className="space-y-4">
         <FormError message={error} />
+        <TextField
+          id="name"
+          label="이름"
+          autoComplete="name"
+          required
+          value={name}
+          error={fieldErrors.name}
+          onChange={(e) => setName(e.target.value)}
+        />
         <TextField
           id="email"
           label="이메일"

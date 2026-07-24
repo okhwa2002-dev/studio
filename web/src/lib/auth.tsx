@@ -4,6 +4,7 @@ import { api } from './api'
 export type User = {
   id: number
   email: string
+  name: string
   role: 'MEMBER' | 'ADMIN'
 }
 
@@ -11,7 +12,7 @@ type AuthState = {
   user: User | null
   loading: boolean
   login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string) => Promise<void>
+  register: (email: string, password: string, name: string) => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -37,10 +38,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(loggedIn)
   }
 
-  const register = async (email: string, password: string) => {
+  const register = async (email: string, password: string, name: string) => {
     // 가입 직후 사용자는 status=pending이라 로그인 자체가 불가능하다.
     // 그래서 여기서 user를 세팅하지 않는다. 호출자가 /pending으로 안내한다.
-    await api.post<{ id: number; status: string }>('/auth/register', { email, password })
+    await api.post<{ id: number; status: string }>('/auth/register', { email, password, name })
   }
 
   const logout = async () => {

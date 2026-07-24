@@ -81,3 +81,23 @@ async def test_list_users_rejects_unknown_status(client, db_session):
 
     resp = await client.get("/api/admin/users", params={"status": "nonsense"})
     assert resp.status_code == 422
+
+
+async def test_admin_list_includes_name(client, db_session):
+    """SELECT에 name을 넣는 것만으로 응답에 실려야 한다(admin_router는 dict(row) 그대로 반환)."""
+    await _login_admin(client, db_session, email="admin-name@example.com")
+
+    db_session.add(
+        User(
+            email="listed@example.com",
+            password_hash=hash_password("pw12345"),
+            status=UserStatus.PENDING,
+            name="박민수",
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get("/api/admin/users", params={"status": UserStatus.PENDING})
+    assert resp.status_code == 200
+    listed = [u for u in resp.json() if u["email"] == "listed@example.com"]
+    assert listed and listed[0]["name"] == "박민수"

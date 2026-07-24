@@ -90,6 +90,7 @@ export function AdminUsers() {
 
   const columns: Column<AdminUser>[] = [
     seqColumn<AdminUser>(rows.length, page, PAGE_SIZE),
+    { header: '이름', cell: (u) => u.name },
     { header: '이메일', cell: (u) => u.email },
     { header: '역할', cell: (u) => roleLabel(u.role) },
     { header: '상태', cell: (u) => <StatusBadge status={u.status} /> },

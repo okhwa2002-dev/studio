@@ -9,15 +9,15 @@ SAMPLE_PASSWORD = "password123"
 
 # 이메일이 고정이라는 점이 멱등성의 근거다. 이미 있는 이메일은 건너뛰므로
 # 몇 번을 돌려도 중복이 생기지 않고, 승인해 둔 샘플 계정의 상태도 되돌아가지 않는다.
-SAMPLE_USERS: list[tuple[str, UserRole, UserStatus]] = [
-    ("sample-pending1@example.com", UserRole.MEMBER, UserStatus.PENDING),
-    ("sample-pending2@example.com", UserRole.MEMBER, UserStatus.PENDING),
-    ("sample-pending3@example.com", UserRole.MEMBER, UserStatus.PENDING),
-    ("sample-pending4@example.com", UserRole.MEMBER, UserStatus.PENDING),
-    ("sample-pending5@example.com", UserRole.MEMBER, UserStatus.PENDING),
-    ("sample-member1@example.com", UserRole.MEMBER, UserStatus.ACTIVE),
-    ("sample-member2@example.com", UserRole.MEMBER, UserStatus.ACTIVE),
-    ("sample-rejected1@example.com", UserRole.MEMBER, UserStatus.REJECTED),
+SAMPLE_USERS: list[tuple[str, str, UserRole, UserStatus]] = [
+    ("sample-pending1@example.com", "김대기", UserRole.MEMBER, UserStatus.PENDING),
+    ("sample-pending2@example.com", "이대기", UserRole.MEMBER, UserStatus.PENDING),
+    ("sample-pending3@example.com", "박대기", UserRole.MEMBER, UserStatus.PENDING),
+    ("sample-pending4@example.com", "최대기", UserRole.MEMBER, UserStatus.PENDING),
+    ("sample-pending5@example.com", "정대기", UserRole.MEMBER, UserStatus.PENDING),
+    ("sample-member1@example.com", "홍길동", UserRole.MEMBER, UserStatus.ACTIVE),
+    ("sample-member2@example.com", "김철수", UserRole.MEMBER, UserStatus.ACTIVE),
+    ("sample-rejected1@example.com", "오거절", UserRole.MEMBER, UserStatus.REJECTED),
 ]
 
 
@@ -41,12 +41,13 @@ async def ensure_sample_users_seeded(conn) -> int:
     password_hash = hash_password(SAMPLE_PASSWORD)
 
     created = 0
-    for email, role, status in SAMPLE_USERS:
+    for email, name, role, status in SAMPLE_USERS:
         if await queries.find_by_email(conn, email=email) is not None:
             continue
         await queries.insert_user(
             conn,
             email=email,
+            name=name,
             password_hash=password_hash,
             role=role,
             status=status,

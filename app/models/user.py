@@ -21,6 +21,13 @@ class User(BaseEntity, table=True):
     email: str = Field(
         unique=True, index=True, sa_column_kwargs={"comment": "로그인 이메일, UNIQUE"}
     )
+    # default=""는 테스트 편의용이다(수많은 테스트가 이름 없이 User(...)를 만든다).
+    # 프로덕션 쓰기는 raw SQL insert_user만 쓰고 거기서 name을 명시적으로 받으므로,
+    # 빈 이름이 이 기본값으로 저장되는 일은 없다. ORM 쓰기 경로를 새로 만들면 이 점을 유의할 것.
+    name: str = Field(
+        default="",
+        sa_column_kwargs={"comment": "표시용 이름 (로그인 식별자는 email)"},
+    )
     password_hash: str = Field(
         sa_column_kwargs={"comment": "argon2 해시 값 (평문 저장 금지)"}
     )

@@ -3,6 +3,7 @@ import { api } from './api'
 export type AdminUser = {
   id: number
   email: string
+  name: string
   role: 'MEMBER' | 'ADMIN'
   status: 'PENDING' | 'ACTIVE' | 'DISABLED' | 'REJECTED'
   created_at: string // 백엔드가 로컬 naive ISO 문자열로 준다
