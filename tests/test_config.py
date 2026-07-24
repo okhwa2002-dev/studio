@@ -6,6 +6,10 @@ import app.config as config_module
 SAFE_JWT_SECRET = "test-jwt-secret-that-is-32-bytes!"
 
 
+def test_cached_test_settings_use_safe_jwt_secret():
+    assert len(config_module.get_settings().jwt_secret.encode("utf-8")) >= 32
+
+
 def test_settings_loads_from_env(monkeypatch):
     # env var가 실제로 반영되는지가 요지다. .env는 꺼서 개발자 로컬 값이 섞이지 않게 한다.
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/studio")

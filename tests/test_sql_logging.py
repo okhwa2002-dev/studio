@@ -44,7 +44,11 @@ async def test_query_logging_is_off_when_disabled(pg_url, caplog, monkeypatch):
 def test_log_sql_defaults_to_false():
     # _env_file=None으로 .env를 무시한 순수 기본값을 본다.
     # 운영에서 설정을 빼먹어도 쿼리 로그는 꺼져 있어야 한다.
-    settings = Settings(_env_file=None, database_url="postgresql://x/y", jwt_secret="x")
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql://x/y",
+        jwt_secret="test-jwt-secret-that-is-32-bytes!",
+    )
     assert settings.log_sql is False
 
 

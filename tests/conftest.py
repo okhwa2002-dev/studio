@@ -5,6 +5,7 @@ os.environ["VOICE_PROVIDER"] = "fake"  # 통합 테스트는 실제 TTS 호출 �
 os.environ["CAPTIONS_PROVIDER"] = "fake"  # 통합 테스트는 실제 whisper 모델 없이 fake로
 os.environ["RENDER_PROVIDER"] = "fake"  # 통합 테스트는 실제 ffmpeg 없이 fake로
 os.environ["WHISPER_MODEL"] = "small"  # 로컬 .env 값에 테스트가 흔들리지 않게 고정
+os.environ["JWT_SECRET"] = "test-jwt-secret-that-is-32-bytes!"
 
 from app.config import get_settings  # noqa: E402
 
