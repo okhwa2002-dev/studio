@@ -11,7 +11,7 @@ def test_settings_has_provider_fields(monkeypatch):
     s = Settings(
         _env_file=None,
         database_url="postgresql+asyncpg://x",
-        jwt_secret="secret-secret-secret-32bytes!!",
+        jwt_secret="test-jwt-secret-that-is-32-bytes!",
     )
     assert s.script_provider == "openai"       # 기본값
     assert s.openai_api_key == ""
