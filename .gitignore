@@ -1,5 +1,6 @@
 # session tooling
 .omc/
+.worktrees/
 
 # env & secrets
 .env
