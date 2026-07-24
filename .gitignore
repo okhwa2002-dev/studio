@@ -22,6 +22,9 @@ dist/
 # app storage (generated media)
 storage/
 
+# app logs (generated)
+log/
+
 # os
 .DS_Store
 Thumbs.db

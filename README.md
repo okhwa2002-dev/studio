@@ -118,7 +118,7 @@ Vite dev 서버가 `/auth`, `/admin/users`, `/health` 요청을 `http://localhos
 인증은 **httpOnly + SameSite=Lax 쿠키**에 의존한다. 이 방식은 프론트와 API가 **같은 출처**일 때만 성립한다.
 
 - 개발: Vite 프록시가 동일 출처를 만든다.
-- 운영: **FastAPI가 `web/dist`를 함께 서빙해야 한다.** (아직 구현 안 됨 — 배포 시 `StaticFiles` 마운트 + SPA 히스토리 폴백 필요)
+- 운영: **FastAPI가 `web/dist`를 함께 서빙한다.** (`app/main.py`의 `mount_spa` — `web/dist`가 있으면 `/assets`를 정적 마운트하고 나머지 경로는 `index.html`로 폴백한다. 빌드가 없으면 아무것도 하지 않아 개발에는 영향이 없다. 배포 전 `npm run build`로 `web/dist`를 만들어 둘 것.)
 - 프록시 접두사(`/auth`, `/admin/users`, `/health`) **아래에는 프론트 라우트를 만들지 않는다.** 주소창 입력·새로고침이 API로 넘어가 SPA 대신 JSON 404가 뜬다.
 
 프론트를 별도 도메인/CDN에 올려야 한다면, **CORS를 켜기 전에 CSRF 방어부터 설계할 것.** 반사적으로 `CORSMiddleware` + `SameSite=None`을 켜면 이 설계의 XSS·CSRF 방어가 무너진다.
