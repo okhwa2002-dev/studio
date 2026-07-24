@@ -90,7 +90,9 @@ class Clip:
 | 세로 필터 | `orientation=portrait` | 이미지만 `orientation=vertical` (영상은 없음) |
 | 레이트리밋 | 200 req/hour · 20,000/month | 100 req/60s |
 
-> **구현 시 확정할 것:** Pexels 영상 엔드포인트는 문서상 `/v1/videos/search`지만 과거 `/videos/search` 경로도 통용된다 — 실제 응답으로 확인한다. Pixabay 공식 문서는 봇 차단(403)이라 레이트리밋만 검증했다. 파라미터명(`video_type`, `per_page`, `order`)과 응답 필드(`hits[].videos.{large,medium,small,tiny}.url`, `hits[].duration`, `hits[].user`)는 **첫 구현 시 실제 응답을 찍어 확정**하고, 그 응답을 테스트 픽스처로 고정한다.
+> **Pexels 확정됨 (2026-07-23, 실 API 스모크 통과):** `/v1/videos/search`가 현행 정답이다 — 영상·이미지 검색 모두 실제 키로 통과했고 `locale=ko-KR`·`orientation=portrait`도 정상 동작한다. (`/videos/search`는 레거시로 deprecated 예정이므로 되돌리지 말 것.)
+>
+> **Pixabay는 아직 미확정:** 공식 문서가 봇 차단(403)이라 레이트리밋만 검증했고, 실 API 스모크는 키 미설정으로 skip 상태다. 파라미터명(`video_type`, `per_page`, `order`)과 응답 필드(`hits[].videos.{large,medium,small,tiny}.url`, `hits[].duration`, `hits[].user`)는 **첫 구현 시 실제 응답을 찍어 확정**하고, 그 응답을 테스트 픽스처로 고정한다.
 
 Pixabay는 영상에 orientation 필터가 없어 가로 소재가 많이 온다. 4.2의 `crop`이 이를 흡수한다.
 
@@ -268,7 +270,7 @@ def scene_spans(scenes: list[dict], duration_sec: float) -> list[tuple[float, fl
 ## 10. 구현 중 검증할 리스크
 
 1. **Pixabay API 스펙** — 공식 문서를 봇 차단으로 읽지 못했다. 파라미터·응답 필드를 첫 호출로 확정하고 픽스처로 고정한다 (3.2)
-2. **Pexels 영상 엔드포인트 경로** — `/v1/videos/search` vs `/videos/search`. 실제 응답으로 확인 (3.2)
+2. ~~**Pexels 영상 엔드포인트 경로**~~ — **해소(2026-07-23).** `/v1/videos/search`가 현행 정답임을 실 API 스모크로 확인. `/videos/search`는 deprecated 예정 (3.2)
 3. **한국어 검색 적중률** — `locale=ko-KR`·`lang=ko`가 실제로 얼마나 잡는지는 돌려봐야 안다. 폴백 체인이 자주 발동하면(= 대부분 `topic`이나 `abstract background`로 떨어지면) 영어 `visual_query` 필드 도입을 다음 슬라이스로 재검토
 4. **`concat` 필터 입력 정합** — `fps`·`setsar`·`pix_fmt`가 씬마다 어긋나면 concat이 실패한다. 정규화 체인이 모든 입력에 동일하게 붙는지 커맨드 조립 테스트로 고정
 5. **긴 filter_complex 문자열** — 씬 수가 늘면 Windows 커맨드라인 길이 제한(약 32KB)에 닿을 수 있다. 씬 3개 내외 대본에선 여유롭지만, 조립 테스트에 씬 10개 케이스를 넣어 길이를 관찰

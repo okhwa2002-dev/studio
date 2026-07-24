@@ -5,8 +5,9 @@ export type NavItem = {
   adminOnly?: boolean
 }
 
-// 메뉴는 여기에만 적는다. 사이드바(무엇을 보여줄지)와 상단바(지금 어디인지)가
+// 메뉴는 여기에만 적는다. 사이드바(무엇을 보여줄지)와 본문 제목(지금 어디인지)이
 // 같은 배열을 읽으므로, 라벨이 두 곳에서 어긋날 수 없다.
+// (상단바는 로고를 갖는다 — 페이지 제목은 AppLayout이 본문 위에 그린다)
 export const NAV: NavItem[] = [
   { path: '/dashboard', label: '대시보드', icon: '📊' },
   { path: '/projects', label: '프로젝트', icon: '🎬' },

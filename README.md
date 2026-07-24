@@ -15,7 +15,11 @@
 | 마이그레이션 | Alembic |
 | 설정 | pydantic-settings (`.env`) |
 | 인증 | argon2-cffi(비밀번호 해시) · PyJWT(httpOnly 쿠키 JWT) |
+| 대본 생성 | OpenAI · Anthropic SDK (교체 가능) |
+| 음성(TTS) | edge-tts (무료, 키 불필요) |
 | 자막(STT) | faster-whisper (로컬 CPU, torch 불필요) |
+| 영상 합성 | imageio-ffmpeg (정적 ffmpeg 번들, H.264/AAC → 9:16 mp4) |
+| 스톡 소재 | httpx + Pexels · Pixabay 무료 API |
 | 테스트 | pytest · pytest-asyncio · httpx · testcontainers |
 | 패키지 매니저 | uv |
 

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FormError } from '../../components/FormError'
-import { Pagination } from '../../components/table/Pagination'
+import { seqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
+import { TableFooter } from '../../components/table/TableFooter'
 import { ApiError } from '../../lib/api'
-import { projects, type ProjectSummary } from '../../lib/projects'
+import { projects, STAGE_LABEL, type ProjectSummary } from '../../lib/projects'
 import { NewProjectModal } from './NewProjectModal'
 
 const PAGE_SIZE = 10
@@ -46,10 +47,18 @@ export function Projects() {
   }, [load])
 
   const columns: Column<ProjectSummary>[] = [
+    // 제목·주제는 길이가 제각각이라 좌측정렬을 유지하고, 나머지 짧은 값들만 중앙정렬한다.
+    seqColumn<ProjectSummary>(rows.length, page, PAGE_SIZE),
     { header: '제목', cell: (p) => <span className="font-medium text-slate-900">{p.title}</span> },
     { header: '주제', cell: (p) => p.topic },
-    { header: '상태', cell: (p) => PROJECT_STATUS_LABEL[p.status] },
-    { header: '생성일', cell: (p) => formatDate(p.created_at), align: 'right' },
+    { header: '상태', cell: (p) => PROJECT_STATUS_LABEL[p.status], align: 'center' },
+    // current_stage는 완료된 프로젝트에도 마지막 단계(render)가 남는다 — 그대로 보여준다.
+    {
+      header: '현재 단계',
+      cell: (p) => STAGE_LABEL[p.current_stage] ?? p.current_stage,
+      align: 'center',
+    },
+    { header: '생성일', cell: (p) => formatDate(p.created_at), align: 'center' },
   ]
 
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
@@ -57,8 +66,8 @@ export function Projects() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-slate-900">프로젝트</h1>
+      {/* 제목은 AppLayout이 NAV에서 그린다 — 여기는 이 화면의 조작만 둔다. */}
+      <div className="mb-4 flex justify-end">
         <button
           onClick={() => setShowNew(true)}
           className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
@@ -84,14 +93,12 @@ export function Projects() {
             empty="아직 프로젝트가 없습니다."
             onRowClick={(p) => navigate(`/projects/${p.id}`)}
           />
-          {/* 페이지 버튼은 가운데, 전체 건수는 우측. 3열 그리드라 버튼이 건수 폭에 밀리지 않고 항상 중앙에 온다. */}
-          <div className="mt-4 grid grid-cols-3 items-center text-sm text-slate-600">
-            <div />
-            <div className="flex justify-center">
-              <Pagination page={page} totalPages={totalPages} onChange={setPage} />
-            </div>
-            <div className="text-right">전체 {rows.length}건</div>
-          </div>
+          <TableFooter
+            page={page}
+            totalPages={totalPages}
+            onChange={setPage}
+            total={rows.length}
+          />
         </>
       )}
 

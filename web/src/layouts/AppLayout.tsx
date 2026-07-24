@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
+import { navTitle } from '../lib/nav'
 
 // 로그인 후 화면들이 공유하는 껍데기. 라우트의 부모로 두어, 페이지를 옮겨 다녀도
 // 리마운트되지 않게 한다.
@@ -9,6 +10,11 @@ export function AppLayout() {
   // 사이드바는 콘텐츠 위에 떠서 열리는 서랍이다. 열려 있는 동안 콘텐츠를 가리므로
   // 기본은 닫힘이고, 메뉴를 고르면 닫힌다(상태를 저장해 둘 이유가 없다).
   const [menuOpen, setMenuOpen] = useState(false)
+  // 상단바가 로고를 갖게 되면서, "지금 어디인지"는 본문 상단이 알려준다.
+  // 라벨은 NAV 한 곳에서만 오므로 사이드바와 어긋날 수 없다.
+  // NAV에 없는 경로(예: /projects/:id)는 빈 문자열 — 그런 화면은 제 제목을 직접 그린다.
+  const { pathname } = useLocation()
+  const title = navTitle(pathname)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -24,6 +30,7 @@ export function AppLayout() {
     <div className="flex min-h-screen flex-col bg-slate-50">
       <Topbar menuOpen={menuOpen} onToggleMenu={() => setMenuOpen((prev) => !prev)} />
       <main className="flex-1 p-6">
+        {title && <h1 className="mb-4 text-lg font-semibold text-slate-900">{title}</h1>}
         <Outlet />
       </main>
 
