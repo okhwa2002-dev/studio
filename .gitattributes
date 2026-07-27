@@ -1,0 +1,17 @@
+# 줄바꿈은 저장소·작업트리 모두 LF로 통일한다.
+# 윈도우(core.autocrlf=true)에서 발생하던 CRLF 변환·경고를 저장소 차원에서 없앤다.
+* text=auto eol=lf
+
+# 바이너리는 정규화 대상에서 제외한다(자동 감지에 더해 명시).
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.mp3  binary
+*.mp4  binary
+*.wav  binary
+*.woff  binary
+*.woff2 binary
+*.ttf  binary
