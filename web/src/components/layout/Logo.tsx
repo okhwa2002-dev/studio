@@ -6,7 +6,7 @@ export function Logo() {
   return (
     <Link to="/dashboard" aria-label="Studio 홈" className="flex items-center gap-2">
       <img src="/favicon.svg" alt="" width={22} height={21} />
-      <span className="text-base font-semibold tracking-tight text-slate-900">Studio</span>
+      <span className="text-base font-semibold tracking-tight text-fg">Studio</span>
     </Link>
   )
 }

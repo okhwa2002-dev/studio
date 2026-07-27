@@ -216,3 +216,55 @@ async def me(user: dict = Depends(current_user)):
     # current_user가 쿠키 검증·상태 확인·password_hash 제거까지 이미 수행한다.
     # 여기서는 프론트가 실제로 쓰는 필드만 골라 내보낸다(감사 컬럼·approved_by 등 미노출).
     return {"id": user["id"], "email": user["email"], "role": user["role"], "name": user["name"]}
+
+
+_PASSWORD_MIN_LEN = 8
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    response: Response,
+    user: dict = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    conn = await raw_connection(db)
+    # current_user는 password_hash를 지운 dict라, 해시가 필요해 다시 조회한다.
+    row = await queries.find_by_id(conn, id=user["id"])
+    if row is None or not verify_password(body.current_password, row["password_hash"]):
+        raise AppError(400, "INVALID_PASSWORD", "현재 비밀번호가 올바르지 않습니다.")
+    if len(body.new_password) < _PASSWORD_MIN_LEN:
+        raise AppError(400, "WEAK_PASSWORD", f"새 비밀번호는 {_PASSWORD_MIN_LEN}자 이상이어야 합니다.")
+    if verify_password(body.new_password, row["password_hash"]):
+        raise AppError(400, "SAME_PASSWORD", "새 비밀번호가 현재 비밀번호와 같습니다.")
+
+    now = now_local()
+    await queries.update_password(
+        conn,
+        id=user["id"],
+        password_hash=hash_password(body.new_password),
+        updated_at=now,
+        updated_by=user["id"],
+    )
+    # 다른 기기 세션은 모두 끊고(탈취 대응) 곧바로 현재 기기용 새 세션을 발급해 유지한다.
+    # revoke_all → insert 순서라, 방금 만든 새 토큰은 폐기되지 않는다.
+    await queries.revoke_all_for_user(conn, user_id=user["id"], revoked_at=now, updated_at=now)
+    refresh_token = generate_refresh_token()
+    await queries.insert_refresh_token(
+        conn,
+        user_id=user["id"],
+        token_hash=hash_refresh_token(refresh_token),
+        expires_at=now + timedelta(days=REFRESH_TOKEN_DAYS),
+        created_at=now,
+        updated_at=now,
+    )
+    await db.commit()
+
+    access_token = create_access_token(user["id"], user["role"])
+    _set_auth_cookies(response, access_token, refresh_token)
+    return {"status": "ok"}

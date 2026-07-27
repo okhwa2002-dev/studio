@@ -5,6 +5,19 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Studio</title>
+    <!-- 첫 페인트 전에 테마 클래스를 붙여 라이트→다크 깜빡임(FOUC)을 막는다.
+         저장 키·해석 규칙은 src/lib/theme.ts와 반드시 일치시켜야 한다. -->
+    <script>
+      (function () {
+        try {
+          var pref = localStorage.getItem('theme-preference') || 'system'
+          var dark =
+            pref === 'dark' ||
+            (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.toggle('dark', dark)
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

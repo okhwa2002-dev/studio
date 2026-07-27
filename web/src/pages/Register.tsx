@@ -113,9 +113,9 @@ export function Register() {
           가입하기
         </Button>
       </form>
-      <p className="mt-4 text-center text-sm text-slate-600">
+      <p className="mt-4 text-center text-sm text-fg-muted">
         이미 계정이 있으신가요?{' '}
-        <Link to="/login" className="font-medium text-slate-900 underline">
+        <Link to="/login" className="font-medium text-fg underline">
           로그인
         </Link>
       </p>

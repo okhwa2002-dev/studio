@@ -80,11 +80,11 @@ export const STAGE_LABEL: Record<string, string> = {
 
 export const STAGE_BADGE: Record<StageStatus, { label: string; className: string }> = {
   PENDING: { label: '대기', className: 'bg-slate-100 text-slate-600' },
-  QUEUED: { label: '대기열', className: 'bg-indigo-100 text-indigo-800' },
-  RUNNING: { label: '실행 중', className: 'bg-blue-100 text-blue-800' },
-  NEEDS_REVIEW: { label: '검토 필요', className: 'bg-yellow-100 text-yellow-800' },
-  APPROVED: { label: '승인됨', className: 'bg-green-100 text-green-800' },
-  FAILED: { label: '실패', className: 'bg-red-100 text-red-800' },
+  QUEUED: { label: '대기열', className: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-500/15 dark:text-indigo-300' },
+  RUNNING: { label: '실행 중', className: 'bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-300' },
+  NEEDS_REVIEW: { label: '검토 필요', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-300' },
+  APPROVED: { label: '승인됨', className: 'bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300' },
+  FAILED: { label: '실패', className: 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300' },
 }
 
 export function hasScript(output: Stage['output']): output is ScriptOutput {

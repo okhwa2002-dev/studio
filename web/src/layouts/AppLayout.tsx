@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { navTitle } from '../lib/nav'
 
 // 로그인 후 화면들이 공유하는 껍데기. 라우트의 부모로 두어, 페이지를 옮겨 다녀도
@@ -27,18 +28,21 @@ export function AppLayout() {
 
   return (
     // 콘텐츠는 사이드바와 무관하게 항상 전체 폭을 쓴다. 열고 닫아도 레이아웃이 흔들리지 않는다.
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-surface-muted">
       <Topbar menuOpen={menuOpen} onToggleMenu={() => setMenuOpen((prev) => !prev)} />
       <main className="flex-1 p-6">
-        {title && <h1 className="mb-4 text-lg font-semibold text-slate-900">{title}</h1>}
+        {title && <h1 className="mb-4 text-lg font-semibold text-fg">{title}</h1>}
         <Outlet />
       </main>
+
+      <ThemeToggle />
+
 
       {menuOpen && (
         <>
           {/* 바깥을 누르면 닫힌다. 사이드바(z-30) 아래에 깔리고, 상단바는 덮지 않는다. */}
           <div
-            className="fixed inset-x-0 bottom-0 top-14 z-20 bg-slate-900/30"
+            className="fixed inset-x-0 bottom-0 top-14 z-20 bg-overlay"
             onClick={() => setMenuOpen(false)}
             aria-hidden
           />

@@ -17,6 +17,14 @@ FROM projects
 WHERE owner_id = :owner_id
 ORDER BY created_at DESC, id DESC;
 
+-- name: list_all_projects
+-- 관리자 전체 프로젝트 화면용. 소유자 이름·이메일을 조인해 한 번에 내려준다.
+SELECT p.id, p.owner_id, p.title, p.topic, p.status, p.current_stage, p.created_at,
+       u.name AS owner_name, u.email AS owner_email
+FROM projects p
+JOIN users u ON u.id = p.owner_id
+ORDER BY p.created_at DESC, p.id DESC;
+
 -- name: update_project_status!
 UPDATE projects
 SET status = :status,

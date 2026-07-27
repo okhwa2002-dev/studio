@@ -49,7 +49,7 @@ export function Projects() {
   const columns: Column<ProjectSummary>[] = [
     // 제목·주제는 길이가 제각각이라 좌측정렬을 유지하고, 나머지 짧은 값들만 중앙정렬한다.
     seqColumn<ProjectSummary>(rows.length, page, PAGE_SIZE),
-    { header: '제목', cell: (p) => <span className="font-medium text-slate-900">{p.title}</span> },
+    { header: '제목', cell: (p) => <span className="font-medium text-fg">{p.title}</span> },
     { header: '주제', cell: (p) => p.topic },
     { header: '상태', cell: (p) => PROJECT_STATUS_LABEL[p.status], align: 'center' },
     // current_stage는 완료된 프로젝트에도 마지막 단계(render)가 남는다 — 그대로 보여준다.
@@ -70,7 +70,7 @@ export function Projects() {
       <div className="mb-4 flex justify-end">
         <button
           onClick={() => setShowNew(true)}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
+          className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-on-primary"
         >
           새 프로젝트
         </button>
@@ -83,7 +83,7 @@ export function Projects() {
       )}
 
       {loading ? (
-        <div className="p-10 text-center text-sm text-slate-500">불러오는 중…</div>
+        <div className="p-10 text-center text-sm text-fg-muted">불러오는 중…</div>
       ) : (
         <>
           <Table

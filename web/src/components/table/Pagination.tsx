@@ -15,18 +15,18 @@ export function Pagination({
         onClick={() => onChange(page - 1)}
         disabled={page <= 1}
         aria-label="이전 페이지"
-        className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+        className="rounded-md border border-line-strong px-3 py-1.5 text-fg-body hover:bg-surface-muted disabled:opacity-40"
       >
         {'<<'}
       </button>
-      <span className="text-slate-600">
+      <span className="text-fg-muted">
         {page} / {totalPages}
       </span>
       <button
         onClick={() => onChange(page + 1)}
         disabled={page >= totalPages}
         aria-label="다음 페이지"
-        className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+        className="rounded-md border border-line-strong px-3 py-1.5 text-fg-body hover:bg-surface-muted disabled:opacity-40"
       >
         {'>>'}
       </button>

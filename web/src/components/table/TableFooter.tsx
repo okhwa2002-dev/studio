@@ -15,7 +15,7 @@ export function TableFooter({
   total: number // 페이지가 아니라 전체 행 수
 }) {
   return (
-    <div className="mt-4 grid grid-cols-3 items-center text-sm text-slate-600">
+    <div className="mt-4 grid grid-cols-3 items-center text-sm text-fg-muted">
       <div />
       <div className="flex justify-center">
         <Pagination page={page} totalPages={totalPages} onChange={onChange} />

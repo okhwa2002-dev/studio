@@ -8,15 +8,15 @@ type Props = InputHTMLAttributes<HTMLInputElement> & {
 export function TextField({ label, error, id, ...rest }: Props) {
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block text-sm font-medium text-slate-700">
+      <label htmlFor={id} className="mb-1 block text-sm font-medium text-fg-body">
         {label}
       </label>
       <input
         id={id}
-        className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-slate-900"
+        className="w-full rounded-md border border-line-strong px-3 py-2 text-fg outline-none focus:border-fg"
         {...rest}
       />
-      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
   )
 }

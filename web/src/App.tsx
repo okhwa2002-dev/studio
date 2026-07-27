@@ -23,7 +23,7 @@ function Routing() {
   // 가드가 로그인된 사용자를 순간적으로 /login으로 튕긴다(새로고침 깜빡임).
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-500">
+      <div className="flex min-h-screen items-center justify-center bg-surface-muted text-fg-muted">
         불러오는 중…
       </div>
     )
@@ -46,6 +46,7 @@ function Routing() {
             <Route path="/admin/approvals" element={<Approvals />} />
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/admin/projects" element={<AdminProjects />} />
+            <Route path="/admin/projects/:id" element={<ProjectDetail readOnly />} />
             <Route path="/admin/system" element={<AdminSystem />} />
           </Route>
         </Route>

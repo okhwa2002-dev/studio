@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
 from app.config import get_settings
-from app.constants import AssetKind, ProjectStatus, StageName, StageStatus
+from app.constants import AssetKind, ProjectStatus, StageName, StageStatus, UserRole
 from app.core import events, pipeline, views
 from app.core.worker import get_worker
 from app.db import get_db, raw_connection
@@ -23,6 +23,15 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 async def _load_owned_project(conn, project_id: int, user_id: int) -> dict:
     row = await queries.find_project_by_id(conn, id=project_id)
     if row is None or row["owner_id"] != user_id:
+        raise Errors.not_found("프로젝트를 찾을 수 없습니다.")
+    return pipeline.decode_stage(row)  # settings jsonb 디코드
+
+
+async def _load_project_for_read(conn, project_id: int, user: dict) -> dict:
+    # 읽기 전용 경로(상세 SSE·에셋)는 소유자뿐 아니라 관리자도 허용한다.
+    # 쓰기(실행·승인·재생성)는 여전히 _load_owned_project로 소유자만 통과시킨다.
+    row = await queries.find_project_by_id(conn, id=project_id)
+    if row is None or (row["owner_id"] != user["id"] and user["role"] != UserRole.ADMIN):
         raise Errors.not_found("프로젝트를 찾을 수 없습니다.")
     return pipeline.decode_stage(row)  # settings jsonb 디코드
 
@@ -166,7 +175,7 @@ async def project_events(
     project_id: int, user: dict = Depends(current_user), db: AsyncSession = Depends(get_db)
 ):
     conn = await raw_connection(db)
-    await _load_owned_project(conn, project_id, user["id"])  # 남의 프로젝트면 404 — 스트림 밖에서, 진짜 404로
+    await _load_project_for_read(conn, project_id, user)  # 소유자·관리자만. 아니면 404 — 스트림 밖에서, 진짜 404로
 
     async def stream():
         # 스냅샷을 읽기 전에 먼저 구독한다. 반대 순서(스냅샷 → 구독)로 하면 그 사이의
@@ -220,7 +229,7 @@ async def get_stage_asset(
     project_id: int, name: str, user: dict = Depends(current_user), db: AsyncSession = Depends(get_db)
 ):
     conn = await raw_connection(db)
-    await _load_owned_project(conn, project_id, user["id"])  # 남의 프로젝트면 여기서 404
+    await _load_project_for_read(conn, project_id, user)  # 소유자·관리자면 통과, 아니면 404
     stage = await _load_stage(conn, project_id, name)
 
     row = await queries.find_asset_by_stage(conn, stage_id=stage["id"])

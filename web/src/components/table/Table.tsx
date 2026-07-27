@@ -35,10 +35,10 @@ export function Table<T>({
   headerAlign?: Align // 헤더는 기본 중앙정렬. 다르게 할 때만 준다(예: 셀과 맞춰 우측)
 }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+    <div className="overflow-x-auto rounded-xl border border-line bg-surface">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-slate-200 text-slate-500">
+          <tr className="border-b border-line text-fg-muted">
             {columns.map((col) => (
               <th
                 key={col.header}
@@ -53,7 +53,7 @@ export function Table<T>({
           {rows.length === 0 ? (
             // 데이터가 없어도 헤더는 남기고, 데이터 영역에만 안내 문구를 채운다.
             <tr>
-              <td colSpan={columns.length} className="px-4 py-10 text-center text-sm text-slate-500">
+              <td colSpan={columns.length} className="px-4 py-10 text-center text-sm text-fg-muted">
                 {empty}
               </td>
             </tr>
@@ -62,14 +62,14 @@ export function Table<T>({
               <tr
                 key={rowKey(row)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
-                className={`border-b border-slate-100 last:border-0 ${
-                  onRowClick ? 'cursor-pointer hover:bg-slate-50' : ''
+                className={`border-b border-line-subtle last:border-0 ${
+                  onRowClick ? 'cursor-pointer hover:bg-surface-muted' : ''
                 }`}
               >
                 {columns.map((col) => (
                   <td
                     key={col.header}
-                    className={`px-4 py-3 text-slate-700 ${ALIGN_CLASS[col.align ?? 'left']}`}
+                    className={`px-4 py-3 text-fg-body ${ALIGN_CLASS[col.align ?? 'left']}`}
                   >
                     {col.cell(row, index)}
                   </td>

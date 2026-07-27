@@ -51,7 +51,7 @@ export function NewProjectModal({
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
         />
-        <label className="flex items-start gap-2 text-sm text-slate-700">
+        <label className="flex items-start gap-2 text-sm text-fg-body">
           <input
             type="checkbox"
             checked={autoRun}
@@ -60,7 +60,7 @@ export function NewProjectModal({
           />
           <span>
             자동으로 끝까지 진행
-            <span className="block text-xs text-slate-400">
+            <span className="block text-xs text-fg-faint">
               대본·음성·자막·영상을 검토 없이 이어서 만듭니다. 중간에 실패하면 멈춥니다.
             </span>
           </span>
@@ -70,14 +70,14 @@ export function NewProjectModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-fg-body hover:bg-surface-muted"
           >
             취소
           </button>
           <button
             type="submit"
             disabled={submitting || !title.trim() || !topic.trim()}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-on-primary disabled:opacity-50"
           >
             {submitting ? '처리 중…' : '만들기'}
           </button>

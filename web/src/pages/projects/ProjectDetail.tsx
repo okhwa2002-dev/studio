@@ -20,19 +20,19 @@ function ScriptView({ stage }: { stage: Stage }) {
   if (!hasScript(stage.output)) return null
   const s = stage.output
   return (
-    <div className="mt-4 space-y-3 rounded-md border border-slate-200 p-4">
-      <div className="text-base font-semibold text-slate-900">{s.title}</div>
-      <div className="text-sm text-slate-600">🎣 {s.hook}</div>
+    <div className="mt-4 space-y-3 rounded-md border border-line p-4">
+      <div className="text-base font-semibold text-fg">{s.title}</div>
+      <div className="text-sm text-fg-muted">🎣 {s.hook}</div>
       <ol className="space-y-2">
         {s.scenes.map((scene) => (
           <li key={scene.index} className="text-sm">
-            <span className="font-medium text-slate-800">#{scene.index}</span>{' '}
-            <span className="text-slate-700">{scene.narration}</span>
-            <div className="text-xs text-slate-400">화면: {scene.on_screen}</div>
+            <span className="font-medium text-fg">#{scene.index}</span>{' '}
+            <span className="text-fg-body">{scene.narration}</span>
+            <div className="text-xs text-fg-faint">화면: {scene.on_screen}</div>
           </li>
         ))}
       </ol>
-      <div className="text-xs text-slate-400">예상 길이 {s.estimated_duration_sec}초</div>
+      <div className="text-xs text-fg-faint">예상 길이 {s.estimated_duration_sec}초</div>
     </div>
   )
 }
@@ -46,13 +46,13 @@ function stageTitle(name: string) {
 function VoiceView({ projectId, stage }: { projectId: number; stage: Stage }) {
   if (!hasVoice(stage.output)) return null
   return (
-    <div className="mt-4 space-y-2 rounded-md border border-slate-200 p-4">
+    <div className="mt-4 space-y-2 rounded-md border border-line p-4">
       <audio
         controls
         className="w-full"
         src={projects.assetUrl(projectId, stage.name, stage.attempt)}
       />
-      <div className="text-xs text-slate-400">
+      <div className="text-xs text-fg-faint">
         목소리 {stage.output.voice} · {stage.output.chars}자
       </div>
     </div>
@@ -87,7 +87,7 @@ function CaptionsView({
   }
 
   return (
-    <div className="mt-4 space-y-3 rounded-md border border-slate-200 p-4">
+    <div className="mt-4 space-y-3 rounded-md border border-line p-4">
       {voiceAttempt !== null && (
         <audio
           controls
@@ -101,14 +101,16 @@ function CaptionsView({
           <span
             key={i}
             className={`rounded px-1 ${
-              i === active ? 'bg-yellow-200 text-slate-900' : 'text-slate-700'
+              i === active
+                ? 'bg-yellow-200 text-slate-900 dark:bg-yellow-500/30 dark:text-yellow-50'
+                : 'text-fg-body'
             }`}
           >
             {word.w}
           </span>
         ))}
       </div>
-      <div className="text-xs text-slate-400">
+      <div className="text-xs text-fg-faint">
         {word_count}단어 · {duration_sec.toFixed(1)}초
       </div>
     </div>
@@ -119,31 +121,31 @@ function RenderView({ projectId, stage }: { projectId: number; stage: Stage }) {
   if (!hasRender(stage.output)) return null
   const url = projects.assetUrl(projectId, stage.name, stage.attempt)
   return (
-    <div className="mt-4 space-y-2 rounded-md border border-slate-200 p-4">
+    <div className="mt-4 space-y-2 rounded-md border border-line p-4">
       <video controls className="w-full rounded-md bg-black" src={url} />
       <a
         href={url}
         download="render.mp4"
-        className="inline-block rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+        className="inline-block rounded-md border border-line-strong px-3 py-1 text-xs font-medium text-fg-body hover:bg-surface-muted"
       >
         mp4 다운로드
       </a>
-      <div className="text-xs text-slate-400">
+      <div className="text-xs text-fg-faint">
         {stage.output.width}×{stage.output.height}
         {stage.output.duration_sec != null && ` · ${stage.output.duration_sec.toFixed(1)}초`}
       </div>
       {stage.output.sources && stage.output.sources.length > 0 && (
-        <div className="space-y-1 border-t border-slate-100 pt-2">
-          <div className="text-xs font-medium text-slate-500">소재 출처</div>
+        <div className="space-y-1 border-t border-line-subtle pt-2">
+          <div className="text-xs font-medium text-fg-muted">소재 출처</div>
           <ul className="space-y-0.5">
             {stage.output.sources.map((source) => (
-              <li key={source.scene} className="text-xs text-slate-400">
+              <li key={source.scene} className="text-xs text-fg-faint">
                 #{source.scene}{' '}
                 <a
                   href={source.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="underline hover:text-slate-600"
+                  className="underline hover:text-fg-muted"
                 >
                   {source.source === 'pexels' ? 'Pexels' : 'Pixabay'}
                 </a>
@@ -166,7 +168,7 @@ function ProgressBar({ progress }: { progress: StageProgress }) {
   const { percent, message } = progress
   return (
     <div className="mt-3 space-y-1">
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
         {percent === null ? (
           // 진짜 진행률이 없는 단계(대본·음성) — 가짜 숫자 대신 움직이는 띠를 보여준다.
           <div className="h-full w-1/3 animate-pulse rounded-full bg-blue-400" />
@@ -177,7 +179,7 @@ function ProgressBar({ progress }: { progress: StageProgress }) {
           />
         )}
       </div>
-      <div className="text-xs text-slate-500">
+      <div className="text-xs text-fg-muted">
         {message}
         {percent !== null && ` ${Math.round(clamp(percent, 0, 100))}%`}
       </div>
@@ -192,6 +194,7 @@ function StageCard({
   progress,
   acting,
   act,
+  readOnly,
 }: {
   projectId: number
   stage: Stage
@@ -199,37 +202,39 @@ function StageCard({
   progress: StageProgress | undefined
   acting: boolean
   act: (fn: () => Promise<Detail>) => Promise<void>
+  readOnly: boolean
 }) {
   return (
-    <div className="mt-4 rounded-lg border border-slate-200 p-4">
+    <div className="mt-4 rounded-lg border border-line p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-slate-800">{stageTitle(stage.name)}</span>
+          <span className="font-medium text-fg">{stageTitle(stage.name)}</span>
           <StageBadge status={stage.status} />
         </div>
+        {/* 읽기 전용(관리자 열람)에서는 실행·승인·재생성 버튼을 아예 그리지 않는다. */}
         <div className="flex gap-2">
-          {(stage.status === 'PENDING' || stage.status === 'FAILED') && (
+          {!readOnly && (stage.status === 'PENDING' || stage.status === 'FAILED') && (
             <button
               onClick={() => act(() => projects.run(projectId, stage.name))}
               disabled={acting}
-              className="rounded-md bg-slate-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+              className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-on-primary disabled:opacity-50"
             >
               {acting ? '요청 중…' : '실행'}
             </button>
           )}
-          {stage.status === 'NEEDS_REVIEW' && (
+          {!readOnly && stage.status === 'NEEDS_REVIEW' && (
             <>
               <button
                 onClick={() => act(() => projects.approve(projectId, stage.name))}
                 disabled={acting}
-                className="rounded-md bg-slate-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+                className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-on-primary disabled:opacity-50"
               >
                 승인
               </button>
               <button
                 onClick={() => act(() => projects.regenerate(projectId, stage.name))}
                 disabled={acting}
-                className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                className="rounded-md border border-line-strong px-3 py-1 text-xs font-medium text-fg-body hover:bg-surface-muted disabled:opacity-50"
               >
                 재생성
               </button>
@@ -243,7 +248,7 @@ function StageCard({
       )}
 
       {stage.status === 'FAILED' && stage.error && (
-        <div className="mt-3 text-sm text-red-700">오류: {stage.error}</div>
+        <div className="mt-3 text-sm text-red-700 dark:text-red-400">오류: {stage.error}</div>
       )}
       {(stage.status === 'NEEDS_REVIEW' || stage.status === 'APPROVED') && (
         <>
@@ -257,7 +262,9 @@ function StageCard({
   )
 }
 
-export function ProjectDetail() {
+// readOnly는 관리자 열람(/admin/projects/:id)에서 켠다 — 액션 버튼을 숨기고 목록 링크를 관리자 쪽으로 돌린다.
+// 서버도 쓰기(실행·승인·재생성)를 소유자로 제한하므로, 버튼을 숨기는 건 UX일 뿐 보안 경계는 백엔드가 강제한다.
+export function ProjectDetail({ readOnly = false }: { readOnly?: boolean }) {
   const { id } = useParams<{ id: string }>()
   const projectId = Number(id)
   const [detail, setDetail] = useState<Detail | null>(null)
@@ -325,15 +332,15 @@ export function ProjectDetail() {
     }
   }
 
-  if (loading) return <div className="p-10 text-center text-sm text-slate-500">불러오는 중…</div>
+  if (loading) return <div className="p-10 text-center text-sm text-fg-muted">불러오는 중…</div>
   if (!detail) return <FormError message={error ?? UNKNOWN} />
 
   const voiceAttempt = detail.stages.find((s) => s.name === 'voice')?.attempt ?? null
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-lg font-semibold text-slate-900">{detail.project.title}</h1>
-      <p className="mt-1 text-sm text-slate-500">주제: {detail.project.topic}</p>
+      <h1 className="text-lg font-semibold text-fg">{detail.project.title}</h1>
+      <p className="mt-1 text-sm text-fg-muted">주제: {detail.project.topic}</p>
 
       {error && <div className="mt-4"><FormError message={error} /></div>}
 
@@ -347,14 +354,15 @@ export function ProjectDetail() {
             progress={progress[s.name]}
             acting={acting}
             act={act}
+            readOnly={readOnly}
           />
         ))}
       </div>
 
       <div className="mt-6">
         <Link
-          to="/projects"
-          className="inline-block rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          to={readOnly ? '/admin/projects' : '/projects'}
+          className="inline-block rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-fg-body hover:bg-surface-muted"
         >
           ← 목록으로
         </Link>

@@ -14,12 +14,18 @@ router = APIRouter(prefix="/admin/users", tags=["admin"])
 @router.get("")
 async def list_users(
     # UserStatus로 선언하면 FastAPI가 값을 검증한다 → 잘못된 값은 422로 거절된다.
-    status: UserStatus = Query(UserStatus.PENDING),
+    # status를 생략하면(None) 상태 무관 전체 목록을 반환한다.
+    status: UserStatus | None = Query(None),
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
     conn = await raw_connection(db)
-    return [dict(row) async for row in queries.list_by_status(conn, status=status)]
+    rows = (
+        queries.list_all(conn)
+        if status is None
+        else queries.list_by_status(conn, status=status)
+    )
+    return [dict(row) async for row in rows]
 
 
 async def _set_status(
@@ -79,3 +85,22 @@ async def unlock_user(
     )
     await db.commit()
     return {"id": user_id, "unlocked_at": now}
+
+
+@router.post("/{user_id}/reset-failures")
+async def reset_failed_login(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
+    conn = await raw_connection(db)
+    row = await queries.find_by_id(conn, id=user_id)
+    if row is None:
+        raise Errors.not_found("사용자를 찾을 수 없습니다.")
+
+    now = now_local()
+    await queries.admin_reset_failed_login(
+        conn, id=user_id, updated_at=now, updated_by=admin["id"]
+    )
+    await db.commit()
+    return {"id": user_id, "failed_login_count": 0}

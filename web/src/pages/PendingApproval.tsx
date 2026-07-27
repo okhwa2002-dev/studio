@@ -5,11 +5,11 @@ import { AuthCard } from '../components/AuthCard'
 export function PendingApproval() {
   return (
     <AuthCard title="승인 대기 중">
-      <p className="text-sm leading-relaxed text-slate-700">
+      <p className="text-sm leading-relaxed text-fg-body">
         관리자 승인 후 로그인할 수 있습니다. 승인이 완료되면 다시 로그인해 주세요.
       </p>
-      <p className="mt-6 text-center text-sm text-slate-600">
-        <Link to="/login" className="font-medium text-slate-900 underline">
+      <p className="mt-6 text-center text-sm text-fg-muted">
+        <Link to="/login" className="font-medium text-fg underline">
           로그인 화면으로
         </Link>
       </p>

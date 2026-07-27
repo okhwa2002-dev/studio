@@ -20,13 +20,13 @@ export function UserMenu() {
 
   return (
     <div className="flex items-center gap-3 text-sm">
-      <span className="text-slate-600">
+      <span className="text-fg-muted">
         {user?.name} · {user?.role}
       </span>
       <button
         onClick={onLogout}
         disabled={pending}
-        className="rounded-md border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        className="rounded-md border border-line-strong px-3 py-1.5 font-medium text-fg-body hover:bg-surface-muted disabled:opacity-50"
       >
         {pending ? '처리 중…' : '로그아웃'}
       </button>

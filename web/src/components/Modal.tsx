@@ -22,23 +22,23 @@ export function Modal({
   return (
     // 배경(오버레이) 클릭은 닫기. 패널 안 클릭은 stopPropagation으로 살린다.
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4"
+      className="fixed inset-0 z-40 flex items-center justify-center bg-overlay p-4"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl"
+        className="w-full max-w-lg rounded-lg bg-surface p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          <h2 className="text-lg font-semibold text-fg">{title}</h2>
           <button
             onClick={onClose}
             aria-label="닫기"
-            className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100"
+            className="rounded-md px-2 py-1 text-fg-muted hover:bg-surface-muted"
           >
             ✕
           </button>

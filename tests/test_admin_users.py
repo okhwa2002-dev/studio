@@ -1,6 +1,7 @@
 from app.auth.security import hash_password
 from app.constants import UserRole, UserStatus
 from app.models.user import User
+from app.utils.time import now_local
 
 
 async def _login_admin(client, db_session, email: str = "admin1@example.com") -> User:
@@ -52,6 +53,37 @@ async def test_reject_user_sets_status_rejected(client, db_session):
     assert resp.json()["status"] == UserStatus.REJECTED
 
 
+async def test_reset_failures_zeroes_count_and_unlocks(client, db_session):
+    """실패 횟수를 0으로 되돌리며 잠김(locked_at)도 함께 해제한다."""
+    await _login_admin(client, db_session, email="admin-reset@example.com")
+    target = User(
+        email="has-failures@example.com",
+        password_hash=hash_password("pw12345"),
+        status=UserStatus.ACTIVE,
+        failed_login_count=3,
+        locked_at=now_local(),
+    )
+    db_session.add(target)
+    await db_session.commit()
+    await db_session.refresh(target)
+
+    resp = await client.post(f"/api/admin/users/{target.id}/reset-failures")
+    assert resp.status_code == 200
+    assert resp.json()["failed_login_count"] == 0
+
+    listed = await client.get("/api/admin/users", params={"status": UserStatus.ACTIVE})
+    row = next(u for u in listed.json() if u["email"] == "has-failures@example.com")
+    assert row["failed_login_count"] == 0
+    assert row["locked_at"] is None
+
+
+async def test_reset_failures_unknown_user_returns_404(client, db_session):
+    await _login_admin(client, db_session, email="admin-reset-404@example.com")
+
+    resp = await client.post("/api/admin/users/999999/reset-failures")
+    assert resp.status_code == 404
+
+
 async def test_approve_unknown_user_returns_404(client, db_session):
     await _login_admin(client, db_session, email="admin4@example.com")
 
@@ -81,6 +113,25 @@ async def test_list_users_rejects_unknown_status(client, db_session):
 
     resp = await client.get("/api/admin/users", params={"status": "nonsense"})
     assert resp.status_code == 422
+
+
+async def test_list_users_without_status_returns_all(client, db_session):
+    """status를 생략하면 상태와 무관하게 모든 사용자를 반환한다."""
+    await _login_admin(client, db_session, email="admin-all@example.com")
+
+    db_session.add_all(
+        [
+            User(email="all-pending@example.com", password_hash=hash_password("pw12345"), status=UserStatus.PENDING),
+            User(email="all-rejected@example.com", password_hash=hash_password("pw12345"), status=UserStatus.REJECTED),
+        ]
+    )
+    await db_session.commit()
+
+    resp = await client.get("/api/admin/users")
+    assert resp.status_code == 200
+    emails = {row["email"] for row in resp.json()}
+    # 서로 다른 상태의 사용자와 로그인한 관리자(ACTIVE)가 한 번에 조회된다.
+    assert {"all-pending@example.com", "all-rejected@example.com", "admin-all@example.com"} <= emails
 
 
 async def test_admin_list_includes_name(client, db_session):
