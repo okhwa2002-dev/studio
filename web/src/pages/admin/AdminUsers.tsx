@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { FormError } from '../../components/FormError'
 import { Modal } from '../../components/Modal'
 import { seqColumn } from '../../components/table/seqColumn'
@@ -7,8 +8,9 @@ import { TableFooter } from '../../components/table/TableFooter'
 import { adminUsers, type AdminUser } from '../../lib/admin'
 import { ApiError } from '../../lib/api'
 
-// 'ALL'은 상태 무관 전체 조회를 뜻하는 UI 전용 값이다(백엔드에는 status 없이 요청).
-type StatusFilter = AdminUser['status'] | 'ALL'
+// UI 전용 필터 값. 'ALL'은 상태 무관 전체, 'LOCKED'는 상태와 무관하게 잠긴 계정만
+// (둘 다 백엔드에는 status 없이 요청하고 잠김은 클라이언트에서 거른다).
+type StatusFilter = AdminUser['status'] | 'ALL' | 'LOCKED'
 
 const STATUS_TABS: { status: StatusFilter; label: string }[] = [
   { status: 'ALL', label: '전체' },
@@ -16,7 +18,11 @@ const STATUS_TABS: { status: StatusFilter; label: string }[] = [
   { status: 'PENDING', label: '대기' },
   { status: 'REJECTED', label: '거절' },
   { status: 'DISABLED', label: '비활성' },
+  { status: 'LOCKED', label: '잠김' },
 ]
+
+// URL ?status= 로 넘어온 값이 유효한 탭인지 검사한다(대시보드 딥링크 대비).
+const STATUS_VALUES = new Set<string>(STATUS_TABS.map((t) => t.status))
 
 const PAGE_SIZE = 10
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
@@ -147,12 +153,22 @@ export function AdminUsers() {
   const [actingId, setActingId] = useState<number | null>(null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<AdminUser | null>(null)
+  const [searchParams] = useSearchParams()
+
+  // 대시보드 딥링크의 필터를 반영한다: ?status=PENDING·LOCKED 등 → 해당 탭.
+  // (?locked=1은 예전 링크 호환용 별칭이다.)
+  useEffect(() => {
+    const s = searchParams.get('status')
+    if (searchParams.get('locked') === '1') setStatus('LOCKED')
+    else if (s && STATUS_VALUES.has(s)) setStatus(s as StatusFilter)
+    setPage(1)
+  }, [searchParams])
 
   const load = useCallback(() => {
     setLoading(true)
     setError(null)
     adminUsers
-      .list(status === 'ALL' ? undefined : status)
+      .list(status === 'ALL' || status === 'LOCKED' ? undefined : status)
       .then((data) => {
         setRows(data)
         setPage(1)
@@ -187,12 +203,11 @@ export function AdminUsers() {
   }
 
   const keyword = query.trim().toLowerCase()
-  const filteredRows = keyword
-    ? rows.filter(
-        (u) =>
-          u.name.toLowerCase().includes(keyword) || u.email.toLowerCase().includes(keyword),
-      )
-    : rows
+  const filteredRows = rows.filter((u) => {
+    if (status === 'LOCKED' && !u.locked_at) return false
+    if (!keyword) return true
+    return u.name.toLowerCase().includes(keyword) || u.email.toLowerCase().includes(keyword)
+  })
 
   const columns: Column<AdminUser>[] = [
     seqColumn<AdminUser>(filteredRows.length, page, PAGE_SIZE),
@@ -255,11 +270,14 @@ export function AdminUsers() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-2">
-        <div className="flex gap-1">
+        <div className="flex items-center gap-1">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.status}
-              onClick={() => setStatus(tab.status)}
+              onClick={() => {
+                setStatus(tab.status)
+                setPage(1)
+              }}
               className={`rounded-md px-3 py-1.5 text-sm ${
                 status === tab.status
                   ? 'bg-primary font-medium text-on-primary'
@@ -297,7 +315,13 @@ export function AdminUsers() {
             rows={pageRows}
             rowKey={(u) => u.id}
             onRowClick={setSelected}
-            empty={keyword ? '검색 결과가 없습니다.' : '해당 상태의 사용자가 없습니다.'}
+            empty={
+              keyword
+                ? '검색 결과가 없습니다.'
+                : status === 'LOCKED'
+                  ? '잠긴 계정이 없습니다.'
+                  : '해당 상태의 사용자가 없습니다.'
+            }
           />
           <TableFooter
             page={page}

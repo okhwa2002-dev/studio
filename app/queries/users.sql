@@ -32,6 +32,14 @@ SELECT id, email, name, role, status, approved_at, approved_by,
 FROM users
 ORDER BY created_at ASC;
 
+-- name: count_users_summary^
+-- 대시보드 관리자 섹션용: 활성·승인 대기·잠긴 계정 수를 한 번에 센다.
+SELECT
+  COUNT(*) FILTER (WHERE status = 'ACTIVE') AS active,
+  COUNT(*) FILTER (WHERE status = 'PENDING') AS pending,
+  COUNT(*) FILTER (WHERE locked_at IS NOT NULL) AS locked
+FROM users;
+
 -- name: update_status!
 UPDATE users
 SET status = :status,

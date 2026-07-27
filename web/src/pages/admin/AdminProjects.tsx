@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FormError } from '../../components/FormError'
 import { seqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
@@ -24,6 +24,9 @@ const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
   DONE: '완료',
 }
 
+// URL ?status= 로 넘어온 값이 유효한 탭인지 검사한다(대시보드 딥링크 대비).
+const STATUS_VALUES = new Set<string>(STATUS_TABS.map((t) => t.status))
+
 const PAGE_SIZE = 10
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
@@ -39,6 +42,14 @@ export function AdminProjects() {
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
+  const [searchParams] = useSearchParams()
+
+  // 대시보드 딥링크의 필터를 반영한다: ?status=DRAFT·REVIEW·DONE 등 → 해당 탭.
+  useEffect(() => {
+    const s = searchParams.get('status')
+    if (s && STATUS_VALUES.has(s)) setStatus(s as StatusFilter)
+    setPage(1)
+  }, [searchParams])
 
   const load = useCallback(() => {
     setLoading(true)

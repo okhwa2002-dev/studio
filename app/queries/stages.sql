@@ -20,6 +20,14 @@ FROM stages
 WHERE project_id = :project_id
 ORDER BY id ASC;
 
+-- name: count_stages_health^
+-- 대시보드 관리자 섹션용: 파이프라인 건강도(실행 중·실패·검토 필요 단계 수).
+SELECT
+  COUNT(*) FILTER (WHERE status = 'RUNNING') AS running,
+  COUNT(*) FILTER (WHERE status = 'FAILED') AS failed,
+  COUNT(*) FILTER (WHERE status = 'NEEDS_REVIEW') AS needs_review
+FROM stages;
+
 -- name: update_stage_run!
 UPDATE stages
 SET status = :status,
