@@ -90,3 +90,57 @@ async def create_notice(
     )
     await db.commit()
     return {"id": notice_id}
+
+
+async def _load_notice(conn, notice_id: int) -> dict:
+    row = await queries.find_notice_by_id(conn, id=notice_id)
+    if row is None:
+        # 이미 소프트 삭제된 공지도 여기서 걸린다(쿼리가 deleted_at IS NULL로 거른다).
+        raise Errors.not_found("공지사항을 찾을 수 없습니다.")
+    return dict(row)
+
+
+@router.patch("/{notice_id}")
+async def update_notice(
+    notice_id: int,
+    body: NoticeRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
+    conn = await raw_connection(db)
+    await _load_notice(conn, notice_id)
+
+    starts_at, ends_at = _resolve_period(body)
+    now = now_local()
+    await queries.update_notice(
+        conn,
+        id=notice_id,
+        title=body.title,
+        body=body.body,
+        status=body.status,
+        pinned_yn=body.pinned_yn,
+        popup_yn=body.popup_yn,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        updated_at=now,
+        updated_by=admin["id"],
+    )
+    await db.commit()
+    return {"id": notice_id}
+
+
+@router.delete("/{notice_id}")
+async def delete_notice(
+    notice_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
+    conn = await raw_connection(db)
+    await _load_notice(conn, notice_id)
+
+    now = now_local()
+    await queries.soft_delete_notice(
+        conn, id=notice_id, deleted_at=now, deleted_by=admin["id"]
+    )
+    await db.commit()
+    return {"id": notice_id, "deleted_at": now}

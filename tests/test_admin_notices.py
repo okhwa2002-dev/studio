@@ -120,3 +120,85 @@ async def test_member_cannot_access_admin_notices(client, db_session):
 
     assert (await client.get("/api/admin/notices")).status_code == 403
     assert (await client.post("/api/admin/notices", json=_payload())).status_code == 403
+
+
+async def test_update_changes_fields(client, db_session):
+    await _login(client, db_session, "admin-update@example.com")
+    created = await client.post("/api/admin/notices", json=_payload())
+    notice_id = created.json()["id"]
+
+    resp = await client.patch(
+        f"/api/admin/notices/{notice_id}",
+        json=_payload(title="수정된 제목", pinned_yn=YN.Y, status=NoticeStatus.PUBLISHED),
+    )
+    assert resp.status_code == 200
+
+    listed = await client.get("/api/admin/notices")
+    row = next(r for r in listed.json() if r["id"] == notice_id)
+    assert row["title"] == "수정된 제목"
+    assert row["pinned_yn"] == YN.Y
+    assert row["status"] == NoticeStatus.PUBLISHED
+
+
+async def test_reverting_to_draft_clears_starts_at(client, db_session):
+    """게시했던 공지를 임시저장으로 되돌리면 게시일이 비워진다."""
+    await _login(client, db_session, "admin-revert@example.com")
+    created = await client.post(
+        "/api/admin/notices", json=_payload(status=NoticeStatus.PUBLISHED)
+    )
+    notice_id = created.json()["id"]
+
+    resp = await client.patch(
+        f"/api/admin/notices/{notice_id}", json=_payload(status=NoticeStatus.DRAFT)
+    )
+    assert resp.status_code == 200
+
+    listed = await client.get("/api/admin/notices")
+    row = next(r for r in listed.json() if r["id"] == notice_id)
+    assert row["starts_at"] is None
+
+
+async def test_update_unknown_notice_returns_404(client, db_session):
+    await _login(client, db_session, "admin-update-404@example.com")
+
+    resp = await client.patch("/api/admin/notices/999999", json=_payload())
+    assert resp.status_code == 404
+
+
+async def test_delete_keeps_row_but_hides_from_list(client, db_session):
+    """소프트 삭제는 행을 지우지 않고 목록에서만 뺀다."""
+    await _login(client, db_session, "admin-delete@example.com")
+    created = await client.post("/api/admin/notices", json=_payload(title="지울 공지"))
+    notice_id = created.json()["id"]
+
+    resp = await client.delete(f"/api/admin/notices/{notice_id}")
+    assert resp.status_code == 200
+    assert resp.json()["deleted_at"] is not None
+
+    listed = await client.get("/api/admin/notices")
+    assert all(r["id"] != notice_id for r in listed.json())
+
+    from sqlalchemy import select
+
+    from app.models.notice import Notice
+
+    result = await db_session.execute(select(Notice).where(Notice.id == notice_id))
+    row = result.scalar_one()
+    assert row.deleted_at is not None
+    assert row.deleted_by is not None
+
+
+async def test_delete_twice_returns_404(client, db_session):
+    await _login(client, db_session, "admin-delete-twice@example.com")
+    created = await client.post("/api/admin/notices", json=_payload())
+    notice_id = created.json()["id"]
+
+    assert (await client.delete(f"/api/admin/notices/{notice_id}")).status_code == 200
+    assert (await client.delete(f"/api/admin/notices/{notice_id}")).status_code == 404
+
+
+async def test_member_cannot_update_or_delete(client, db_session):
+    await _login(client, db_session, "member-write@example.com", role=UserRole.MEMBER)
+
+    assert (await client.patch("/api/admin/notices/1", json=_payload())).status_code == 403
+    assert (await client.delete("/api/admin/notices/1")).status_code == 403
