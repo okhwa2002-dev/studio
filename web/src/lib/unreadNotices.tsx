@@ -25,7 +25,7 @@ export function UnreadNoticesProvider({ children }: { children: ReactNode }) {
 
   // 화면 이동이 빠르면 이전 요청이 나중에 도착해 최신 값을 덮을 수 있다.
   // 요청마다 번호를 달고, 도착 시점에 자기가 최신이 아니면 결과를 버린다.
-  // (언마운트 뒤 도착한 응답도 같은 검사에 걸려 setCount를 부르지 않는다.)
+  // (언마운트 뒤 도착한 응답은 이 검사를 통과해 setCount를 부르지만, React 18에서는 무시된다.)
   const latestRequest = useRef(0)
 
   const refresh = useCallback(() => {

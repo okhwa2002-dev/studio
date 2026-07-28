@@ -328,7 +328,7 @@ export function AdminNotices() {
 
       {loading ? (
         <div className="p-10 text-center text-sm text-fg-muted">불러오는 중…</div>
-      ) : (
+      ) : error ? null : (
         <>
           <Table
             columns={columns}

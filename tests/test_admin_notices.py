@@ -147,6 +147,10 @@ async def test_reverting_to_draft_clears_starts_at(client, db_session):
         "/api/admin/notices", json=_payload(status=NoticeStatus.PUBLISHED)
     )
     notice_id = created.json()["id"]
+    # 되돌리기 전 전제조건: 게시되었으므로 게시일이 채워져 있어야 한다. 이 assert가
+    # 없으면 게시가 starts_at을 채우는 동작이 깨져도 이 테스트는 계속 통과한다.
+    published = await client.get("/api/admin/notices")
+    assert next(r for r in published.json() if r["id"] == notice_id)["starts_at"] is not None
 
     resp = await client.patch(
         f"/api/admin/notices/{notice_id}", json=_payload(status=NoticeStatus.DRAFT)

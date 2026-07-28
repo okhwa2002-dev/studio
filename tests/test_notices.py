@@ -200,3 +200,32 @@ async def test_popups_exclude_expired(client, db_session):
 
     resp = await client.get("/api/notices/popups")
     assert resp.json() == []
+
+
+async def test_draft_with_past_start_is_hidden_everywhere(client, db_session):
+    """이 테스트가 없으면 네 쿼리의 `status = 'PUBLISHED'` 조건은 어떤 테스트에도
+    걸리지 않는다 — _resolve_period가 임시저장의 starts_at을 항상 비우기 때문에
+    'DRAFT면서 starts_at이 과거'인 조합은 API로는 만들어지지 않는다. ORM으로 직접
+    그 조합을 만들어 네 조회 경로 모두에서 실제로 막히는지 확인한다."""
+    await _login_member(client, db_session, "member-draft-past@example.com")
+    now = now_local()
+
+    draft = await _add_notice(
+        db_session,
+        title="임시저장인데시작일지남",
+        status=NoticeStatus.DRAFT,
+        starts_at=now - timedelta(days=1),
+        popup_yn=YN.Y,
+    )
+
+    listed = await client.get("/api/notices")
+    assert draft.title not in [row["title"] for row in listed.json()]
+
+    count = await client.get("/api/notices/unread/count")
+    assert count.json() == {"count": 0}
+
+    popups = await client.get("/api/notices/popups")
+    assert popups.json() == []
+
+    resp = await client.post(f"/api/notices/{draft.id}/read")
+    assert resp.status_code == 404

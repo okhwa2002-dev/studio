@@ -1,7 +1,7 @@
 import { api } from './api'
 
-// DB·API·프론트가 모두 'Y'/'N' 같은 표기를 쓴다. 불리언 변환은 체크박스에
-// 바인딩하는 지점에서만 일어나므로, 값이 뒤집혔을 때 볼 곳이 한 군데뿐이다.
+// DB·API·프론트가 모두 'Y'/'N' 같은 표기를 쓴다. 불리언 변환은 isY/toYn에서만
+// 정의되므로(호출하는 곳은 여럿이어도), 값이 뒤집혔을 때 볼 곳이 한 군데뿐이다.
 export type Yn = 'Y' | 'N'
 
 export function isY(value: Yn): boolean {
