@@ -56,12 +56,14 @@ export function Notices() {
     if (notice.is_read) return
     // 읽음 처리는 부가 정보다. 실패해도 본문은 이미 열려 있으므로 조용히 넘어가고,
     // NEW 배지가 남았다가 다음 열람 때 다시 시도된다.
-    notices
-      .markRead(notice.id)
-      .then(() => {
+    // 거절 핸들러를 then의 두 번째 인자로 두는 것은, 성공 콜백 안에서 나는 예외까지
+    // 함께 삼키지 않기 위해서다(체인 끝의 .catch였다면 그것까지 먹는다).
+    notices.markRead(notice.id).then(
+      () => {
         setRows((prev) => prev.map((n) => (n.id === notice.id ? { ...n, is_read: true } : n)))
-      })
-      .catch(() => {})
+      },
+      () => {},
+    )
   }
 
   const keyword = query.trim().toLowerCase()
