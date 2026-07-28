@@ -22,6 +22,26 @@ async def list_notices(
     return [dict(row) async for row in rows]
 
 
+@router.get("/popups")
+async def list_popup_notices(
+    user: dict = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # 읽음 여부를 보지 않는다 — "오늘 하루 보지 않기"는 브라우저가 기억한다.
+    conn = await raw_connection(db)
+    return [dict(row) async for row in queries.list_popup_notices(conn, now=now_local())]
+
+
+@router.get("/unread/count")
+async def count_unread_notices(
+    user: dict = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    conn = await raw_connection(db)
+    row = await queries.count_unread_notices(conn, user_id=user["id"], now=now_local())
+    return {"count": row["n"]}
+
+
 @router.post("/{notice_id}/read")
 async def mark_notice_read(
     notice_id: int,

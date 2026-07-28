@@ -140,3 +140,63 @@ async def test_other_users_read_does_not_leak(client, db_session):
     row = next(r for r in listed.json() if r["id"] == notice.id)
     assert row["is_read"] is False
     assert other.id is not None
+
+
+async def test_unread_count_counts_only_visible_unread(client, db_session):
+    await _login_member(client, db_session, "member-count@example.com")
+    now = now_local()
+
+    await _add_notice(db_session, title="안읽음1")
+    await _add_notice(db_session, title="안읽음2")
+    await _add_notice(db_session, title="임시저장", status=NoticeStatus.DRAFT, starts_at=None)
+    await _add_notice(db_session, title="예약", starts_at=now + timedelta(days=1))
+
+    resp = await client.get("/api/notices/unread/count")
+    assert resp.status_code == 200
+    assert resp.json() == {"count": 2}
+
+
+async def test_unread_count_drops_after_read(client, db_session):
+    await _login_member(client, db_session, "member-count-read@example.com")
+    notice = await _add_notice(db_session)
+
+    assert (await client.get("/api/notices/unread/count")).json()["count"] == 1
+    await client.post(f"/api/notices/{notice.id}/read")
+    assert (await client.get("/api/notices/unread/count")).json()["count"] == 0
+
+
+async def test_popups_return_only_popup_yn_y(client, db_session):
+    await _login_member(client, db_session, "member-popup@example.com")
+
+    await _add_notice(db_session, title="팝업아님", popup_yn=YN.N)
+    popup = await _add_notice(db_session, title="팝업", popup_yn=YN.Y)
+
+    resp = await client.get("/api/notices/popups")
+    assert resp.status_code == 200
+    assert [row["id"] for row in resp.json()] == [popup.id]
+    assert resp.json()[0]["body"] == "본문"
+
+
+async def test_popups_ignore_read_state(client, db_session):
+    """팝업 닫기는 읽음과 무관하다 — 읽은 공지도 팝업 대상에서 빠지지 않는다."""
+    await _login_member(client, db_session, "member-popup-read@example.com")
+    popup = await _add_notice(db_session, popup_yn=YN.Y)
+    await client.post(f"/api/notices/{popup.id}/read")
+
+    resp = await client.get("/api/notices/popups")
+    assert [row["id"] for row in resp.json()] == [popup.id]
+
+
+async def test_popups_exclude_expired(client, db_session):
+    await _login_member(client, db_session, "member-popup-expired@example.com")
+    now = now_local()
+
+    await _add_notice(
+        db_session,
+        popup_yn=YN.Y,
+        starts_at=now - timedelta(days=3),
+        ends_at=now - timedelta(days=1),
+    )
+
+    resp = await client.get("/api/notices/popups")
+    assert resp.json() == []
