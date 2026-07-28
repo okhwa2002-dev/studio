@@ -12,6 +12,7 @@ from app.api.admin_notices import router as admin_notices_router
 from app.api.admin_projects import router as admin_projects_router
 from app.api.dashboard import router as dashboard_router
 from app.api.health import router as health_router
+from app.api.notices import router as notices_router
 from app.api.projects import router as projects_router
 from app.auth.admin_router import router as admin_users_router
 from app.auth.router import router as auth_router
@@ -44,6 +45,7 @@ app.include_router(admin_users_router, prefix="/api")
 app.include_router(admin_notices_router, prefix="/api")
 app.include_router(admin_projects_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
+app.include_router(notices_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
 
 
