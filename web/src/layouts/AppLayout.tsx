@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
 import { ThemeToggle } from '../components/ThemeToggle'
+import { NoticePopup } from '../components/NoticePopup'
 import { navTitle } from '../lib/nav'
 import { UnreadNoticesProvider } from '../lib/unreadNotices'
 
@@ -38,6 +39,7 @@ export function AppLayout() {
         </main>
 
         <ThemeToggle />
+        <NoticePopup />
 
         {menuOpen && (
           <>
