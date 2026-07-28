@@ -5,6 +5,7 @@ import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
 import { ApiError } from '../../lib/api'
 import { isY, notices, type Notice } from '../../lib/notices'
+import { useUnreadNotices } from '../../lib/unreadNotices'
 
 const PAGE_SIZE = 10
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
@@ -42,6 +43,7 @@ export function Notices() {
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Notice | null>(null)
+  const { refresh } = useUnreadNotices()
 
   useEffect(() => {
     notices
@@ -61,6 +63,8 @@ export function Notices() {
     notices.markRead(notice.id).then(
       () => {
         setRows((prev) => prev.map((n) => (n.id === notice.id ? { ...n, is_read: true } : n)))
+        // 같은 화면에 머문 채 읽어도 상단바 배지가 즉시 줄어든다.
+        refresh()
       },
       () => {},
     )
