@@ -1,6 +1,13 @@
 from enum import StrEnum
 
 
+class YN(StrEnum):
+    """참/거짓을 나타내는 *_yn 컬럼의 값. DB에 'Y'/'N' 한 글자로 저장된다."""
+
+    Y = "Y"
+    N = "N"
+
+
 class UserRole(StrEnum):
     """users.role 코드값. DB에 대문자로 저장된다."""
 
@@ -51,3 +58,10 @@ class AssetKind(StrEnum):
     AUDIO = "AUDIO"
     SRT = "SRT"
     VIDEO = "VIDEO"
+
+
+class NoticeStatus(StrEnum):
+    """notices.status 코드값. DB에 대문자로 저장된다."""
+
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"
