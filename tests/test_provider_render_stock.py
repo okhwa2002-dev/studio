@@ -40,7 +40,10 @@ class _FakeSource:
 
     name = "pexels"
 
-    def __init__(self, hits=None):
+    def __init__(self, hits=None, name=None):
+        # name을 넘기면 enabled_sources 순서 테스트에서 pexels/pixabay를 구분할 수 있다.
+        if name is not None:
+            self.name = name
         self._hits = hits if hits is not None else [_clip(f"c{i}") for i in range(1, 6)]
 
     async def search(self, query, kind):
@@ -65,18 +68,24 @@ class _Recorder:
         storage.write_bytes(cmd[-1], b"MP4-bytes")
 
     async def downloader(self, url, rel, max_bytes, timeout_sec, transport=None):
-        self.downloads.append({"url": url, "rel": rel})
+        # max_bytes/timeout_sec도 기록한다 — provider가 ctx.settings에서 뽑은 값을
+        # 실제로 여기까지 전달하는지가 검증 대상이다(그냥 넘기기만 하고 안 쓰면 못 잡는다).
+        self.downloads.append({
+            "url": url, "rel": rel, "max_bytes": max_bytes, "timeout_sec": timeout_sec,
+        })
         if len(self.downloads) <= self._download_fails:
             raise StockTooLarge("too big")
         storage.write_bytes(rel, b"CLIP")
         return 4
 
 
-def _ctx(on_progress=None, attempt=0):
+def _ctx(on_progress=None, attempt=0, settings=None):
     kwargs = {"topic": "도시 여행", "inputs": _INPUTS, "input_assets": _ASSETS,
               "attempt": attempt, "workdir": "projects/9/render"}
     if on_progress is not None:
         kwargs["on_progress"] = on_progress
+    if settings is not None:
+        kwargs["settings"] = settings
     return StageContext(**kwargs)
 
 
@@ -277,6 +286,64 @@ async def test_missing_voice_asset_raises(monkeypatch, tmp_path):
         await _provider(_Recorder()).run(ctx)
 
     assert exc.value.code == "VOICE_ASSET_MISSING"
+
+
+# --- ctx.settings 배선(stage_setting) ----------------------------------------
+
+@pytest.mark.asyncio
+async def test_run_downloads_use_max_bytes_and_timeout_from_ctx_settings(monkeypatch, tmp_path):
+    """다운로드 상한·타임아웃이 .env가 아니라 ctx.settings에서 온다.
+
+    .env 기본값(52_428_800 / 30)과 다른 값을 넣어야 stage_setting의 .env 폴백 경로와
+    구분된다 — 같은 값이면 stage_setting이 get_settings()로 되돌아가도 테스트가 못 잡는다.
+    """
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    rec = _Recorder()
+    ctx = _ctx(settings={"stock_max_bytes": 1_048_576, "stock_timeout_sec": 7})
+    await _provider(rec).run(ctx)
+
+    assert rec.downloads[0]["max_bytes"] == 1_048_576
+    assert rec.downloads[0]["timeout_sec"] == 7
+    assert rec.downloads[0]["max_bytes"] != 52_428_800   # .env 기본값과 달라야 의미가 있다
+    assert rec.downloads[0]["timeout_sec"] != 30
+
+
+@pytest.mark.asyncio
+async def test_run_uses_stock_sources_order_from_ctx_settings(monkeypatch, tmp_path):
+    """소스 순서가 .env가 아니라 ctx.settings에서 온다.
+
+    다른 테스트들과 달리 sources=를 주입하지 않는다 — self._sources or enabled_sources(
+    stage_setting(ctx.settings, "stock_sources")) 경로 자체를 실제로 태워야 한다.
+    API 키는 여전히 .env에서 오므로 get_settings() 인스턴스에 두 키를 모두 심어 두고,
+    _FACTORIES를 스파이로 바꿔치기해 어떤 순서로 어떤 소스가 만들어지는지 기록한다.
+    """
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    monkeypatch.setattr(get_settings(), "pexels_api_key", "k1", raising=False)
+    monkeypatch.setattr(get_settings(), "pixabay_api_key", "k2", raising=False)
+
+    from app.providers.render import sources as sources_module
+
+    created_order: list[str] = []
+
+    def _spy_factory(name):
+        def factory():
+            created_order.append(name)
+            return _FakeSource(name=name)
+        return factory
+
+    monkeypatch.setattr(sources_module, "_FACTORIES", {
+        "pexels": (_spy_factory("pexels"), "pexels_api_key"),
+        "pixabay": (_spy_factory("pixabay"), "pixabay_api_key"),
+    })
+
+    rec = _Recorder()
+    ctx = _ctx(settings={"stock_sources": ["pixabay", "pexels"]})
+    provider = StockRender(runner=rec.runner, exe="/bin/ffmpeg", downloader=rec.downloader)
+    await provider.run(ctx)
+
+    # .env 기본 순서는 ["pexels", "pixabay"](app/config.py) — 뒤집힌 순서가 그대로
+    # 나와야 stage_setting이 진짜 ctx.settings를 읽고 있다는 증거가 된다.
+    assert created_order == ["pixabay", "pexels"]
 
 
 def test_validate_without_any_api_key_raises(monkeypatch):

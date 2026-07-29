@@ -12,7 +12,9 @@ type AuthState = {
   user: User | null
   loading: boolean
   login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, name: string) => Promise<void>
+  // 서버가 정한 신규 계정 상태('ACTIVE' | 'PENDING')를 그대로 돌려준다 —
+  // 가입 자동 승인 설정에 따라 달라지므로 호출자가 안내를 갈라야 한다.
+  register: (email: string, password: string, name: string) => Promise<string>
   logout: () => Promise<void>
 }
 
@@ -39,9 +41,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const register = async (email: string, password: string, name: string) => {
-    // 가입 직후 사용자는 status=pending이라 로그인 자체가 불가능하다.
-    // 그래서 여기서 user를 세팅하지 않는다. 호출자가 /pending으로 안내한다.
-    await api.post<{ id: number; status: string }>('/auth/register', { email, password, name })
+    // 가입 자동 승인이 켜져 있으면 신규 계정은 곧바로 ACTIVE다 — "가입 직후엔 무조건
+    // PENDING"이 아니므로 응답의 status를 버리지 않고 호출자에게 넘긴다.
+    // 여기서 user를 세팅하지 않는 것은 여전하다: /auth/register는 인증 쿠키를 내려주지
+    // 않으므로 ACTIVE라도 로그인은 따로 해야 한다.
+    const created = await api.post<{ id: number; status: string }>('/auth/register', {
+      email,
+      password,
+      name,
+    })
+    return created.status
   }
 
   const logout = async () => {

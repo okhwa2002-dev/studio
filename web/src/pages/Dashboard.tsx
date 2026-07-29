@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { FormError } from '../components/FormError'
 import { ApiError } from '../lib/api'
 import { dashboard, type DashboardSummary } from '../lib/dashboard'
+import { isY, notices as noticesApi, type Notice } from '../lib/notices'
 import { STAGE_LABEL } from '../lib/projects'
 
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
@@ -43,6 +44,60 @@ function AttentionBadges({ needsReview, failed }: { needsReview: boolean; failed
         </span>
       )}
     </span>
+  )
+}
+
+const NOTICE_PREVIEW_LIMIT = 5
+
+// 최근 공지 요약. 여기서 상세를 열지 않고 /notices로 보낸다 — 읽음 처리와
+// 배지 갱신 경로를 공지 목록 화면 한 군데로 모으기 위해서다.
+function NoticeSection() {
+  const [rows, setRows] = useState<Notice[]>([])
+
+  useEffect(() => {
+    // 공지는 대시보드의 곁다리다. 실패하면 섹션을 그리지 않고 넘어간다.
+    noticesApi
+      .list()
+      .then((data) => setRows(data.slice(0, NOTICE_PREVIEW_LIMIT)))
+      .catch(() => setRows([]))
+  }, [])
+
+  if (rows.length === 0) return null
+
+  return (
+    <div className="mb-6">
+      <div className="mb-3 flex items-center justify-between">
+        <SectionTitle>공지사항</SectionTitle>
+        <Link to="/notices" className="text-sm text-fg-muted hover:text-fg">
+          더보기 →
+        </Link>
+      </div>
+      <div className="rounded-lg border border-line bg-surface">
+        <ul className="divide-y divide-line-subtle">
+          {rows.map((notice) => (
+            <li key={notice.id}>
+              <Link
+                to="/notices"
+                className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-surface-muted"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  {isY(notice.pinned_yn) && <span aria-label="고정">📌</span>}
+                  <span className="truncate text-sm text-fg">{notice.title}</span>
+                  {!notice.is_read && (
+                    <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800 dark:bg-red-500/15 dark:text-red-300">
+                      NEW
+                    </span>
+                  )}
+                </span>
+                <span className="shrink-0 text-xs text-fg-muted">
+                  {notice.starts_at.slice(5, 10)}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   )
 }
 
@@ -173,6 +228,7 @@ export function Dashboard() {
 
   return (
     <div className="max-w-3xl">
+      <NoticeSection />
       <MemberSection data={data} />
       {data.admin && <AdminSection admin={data.admin} />}
     </div>

@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.constants import UserRole, UserStatus
 from app.db import get_db, raw_connection
 from app.queries import queries
+from app.runtime_settings import get_runtime_settings
 from app.utils.errors import AppError, Errors
 from app.utils.time import now_local
 
@@ -42,6 +43,18 @@ class RegisterRequest(BaseModel):
     name: str
 
 
+@router.get("/policy")
+async def policy(db: AsyncSession = Depends(get_db)):
+    """회원가입·비밀번호 변경 화면이 쓰는 공개 정책값.
+
+    회원가입은 로그인 전 화면이라 /auth/me로는 전달할 수 없고, 일반 사용자에게
+    관리자 설정 API를 열 수도 없다. 최소 길이는 가입을 시도하면 어차피 드러나는
+    값이라 공개해도 잃을 것이 없다.
+    """
+    conn = await raw_connection(db)
+    return {"password_min_len": (await get_runtime_settings(conn)).password_min_len}
+
+
 @router.post("/register", status_code=201)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     email = body.email.strip().lower()
@@ -50,9 +63,21 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if not name or len(name) > _NAME_MAX_LEN:
         raise AppError(400, "INVALID_NAME", "이름은 1~50자로 입력해 주세요.")
     conn = await raw_connection(db)
+
+    # 비밀번호 변경과 같은 규칙·같은 에러 코드를 쓴다. 가입 경로에만 검증이 없어서
+    # 1자 비밀번호로도 계정이 만들어지던 구멍을 막는다.
+    runtime = await get_runtime_settings(conn)
+    min_len = runtime.password_min_len
+    if len(body.password) < min_len:
+        raise AppError(400, "WEAK_PASSWORD", f"비밀번호는 {min_len}자 이상이어야 합니다.")
+
     existing = await queries.find_by_email(conn, email=email)
     if existing is not None:
         raise Errors.conflict("이미 등록된 이메일입니다.")
+
+    # 자동 승인이 켜져 있으면 승인 대기를 건너뛴다. 이미 PENDING인 사용자에게는
+    # 소급되지 않는다 — 설정은 이후 가입에만 적용된다.
+    status = UserStatus.ACTIVE if runtime.signup_auto_approve else UserStatus.PENDING
 
     now = now_local()
     try:
@@ -62,7 +87,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
             name=name,
             password_hash=hash_password(body.password),
             role=UserRole.MEMBER,
-            status=UserStatus.PENDING,
+            status=status,
             created_at=now,
             updated_at=now,
         )
@@ -72,7 +97,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
         # 500이 아닌 409 CONFLICT로 변환한다.
         raise Errors.conflict("이미 등록된 이메일입니다.")
     await db.commit()
-    return {"id": user_id, "status": UserStatus.PENDING}
+    return {"id": user_id, "status": status}
 
 
 class LoginRequest(BaseModel):
@@ -117,7 +142,7 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
         new_count = row["failed_login_count"] + 1
         if row["locked_at"] is not None:
             new_locked_at = row["locked_at"]
-        elif new_count >= get_settings().failed_login_limit:
+        elif new_count >= (await get_runtime_settings(conn)).failed_login_limit:
             new_locked_at = now
         else:
             new_locked_at = None
@@ -218,9 +243,6 @@ async def me(user: dict = Depends(current_user)):
     return {"id": user["id"], "email": user["email"], "role": user["role"], "name": user["name"]}
 
 
-_PASSWORD_MIN_LEN = 8
-
-
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
@@ -238,8 +260,9 @@ async def change_password(
     row = await queries.find_by_id(conn, id=user["id"])
     if row is None or not verify_password(body.current_password, row["password_hash"]):
         raise AppError(400, "INVALID_PASSWORD", "현재 비밀번호가 올바르지 않습니다.")
-    if len(body.new_password) < _PASSWORD_MIN_LEN:
-        raise AppError(400, "WEAK_PASSWORD", f"새 비밀번호는 {_PASSWORD_MIN_LEN}자 이상이어야 합니다.")
+    min_len = (await get_runtime_settings(conn)).password_min_len
+    if len(body.new_password) < min_len:
+        raise AppError(400, "WEAK_PASSWORD", f"새 비밀번호는 {min_len}자 이상이어야 합니다.")
     if verify_password(body.new_password, row["password_hash"]):
         raise AppError(400, "SAME_PASSWORD", "새 비밀번호가 현재 비밀번호와 같습니다.")
 

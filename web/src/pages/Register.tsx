@@ -6,6 +6,7 @@ import { FormError } from '../components/FormError'
 import { TextField } from '../components/TextField'
 import { ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { usePasswordMinLen } from '../lib/policy'
 
 type FieldErrors = {
   name?: string
@@ -15,7 +16,13 @@ type FieldErrors = {
 }
 
 // 클라이언트 검증은 UX 보조일 뿐 신뢰 경계가 아니다. 진짜 검증은 서버가 한다.
-function validate(name: string, email: string, password: string, confirm: string): FieldErrors {
+function validate(
+  name: string,
+  email: string,
+  password: string,
+  confirm: string,
+  minLen: number,
+): FieldErrors {
   const errors: FieldErrors = {}
   const trimmed = name.trim()
   if (trimmed.length < 1 || trimmed.length > 50) {
@@ -24,8 +31,8 @@ function validate(name: string, email: string, password: string, confirm: string
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = '올바른 이메일 형식이 아닙니다.'
   }
-  if (password.length < 8) {
-    errors.password = '비밀번호는 8자 이상이어야 합니다.'
+  if (password.length < minLen) {
+    errors.password = `비밀번호는 ${minLen}자 이상이어야 합니다.`
   }
   if (password !== confirm) {
     errors.confirm = '비밀번호가 일치하지 않습니다.'
@@ -36,6 +43,7 @@ function validate(name: string, email: string, password: string, confirm: string
 export function Register() {
   const { register } = useAuth()
   const navigate = useNavigate()
+  const passwordMinLen = usePasswordMinLen()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -49,14 +57,24 @@ export function Register() {
     event.preventDefault()
     setError(undefined)
 
-    const errors = validate(name, email, password, confirm)
+    const errors = validate(name, email, password, confirm, passwordMinLen)
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) return
 
     setPending(true)
     try {
-      await register(email, password, name.trim())
-      // 가입한 사용자는 status=pending이라 로그인할 수 없다. 대기 안내로 보낸다.
+      const status = await register(email, password, name.trim())
+      if (status === 'ACTIVE') {
+        // 가입 자동 승인이 켜진 배포. 이미 승인된 계정에게 "관리자 승인 후 로그인할 수
+        // 있습니다"라고 안내하면 거짓말이 되므로 /pending으로 보내지 않는다.
+        // /auth/register는 인증 쿠키를 주지 않으니 로그인 화면으로 안내한다.
+        navigate('/login', {
+          replace: true,
+          state: { notice: '가입이 완료되었습니다. 바로 로그인해 주세요.' },
+        })
+        return
+      }
+      // PENDING — 관리자 승인 전에는 로그인할 수 없다. 대기 안내로 보낸다.
       navigate('/pending', { replace: true })
     } catch (e) {
       // 409 = 이미 등록된 이메일. 서버 메시지를 그대로 보여준다.

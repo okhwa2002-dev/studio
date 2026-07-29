@@ -4,17 +4,22 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.api.admin_notices import router as admin_notices_router
 from app.api.admin_projects import router as admin_projects_router
+from app.api.admin_system import router as admin_system_router
 from app.api.dashboard import router as dashboard_router
 from app.api.health import router as health_router
+from app.api.notices import router as notices_router
 from app.api.projects import router as projects_router
 from app.auth.admin_router import router as admin_users_router
 from app.auth.router import router as auth_router
 from app.core.worker import get_worker
+from app.runtime_settings import EnvSettingsError, check_env_defaults
 from app.utils.errors import DEFAULT_ERROR, AppError
 from app.utils.logging import configure_logging
 
@@ -24,6 +29,16 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 런타임 설정의 기본값은 .env에서 온다. 범위를 벗어난 .env는 여기서 기동을 멈춘다 —
+    # 그러지 않으면 "관리자가 손대지도 않은 항목 때문에 시스템 설정이 저장되지 않는"
+    # 식으로 한참 뒤 엉뚱한 곳에서 드러난다. 트레이스백만으로는 어떤 키가 문제인지
+    # 알 수 없으므로, 고쳐야 할 키와 이유를 먼저 로그로 남기고 예외를 그대로 올린다.
+    try:
+        check_env_defaults()
+    except EnvSettingsError as exc:
+        logger.error("%s", exc)
+        raise
+
     # 단계 실행은 요청이 아니라 이 워커가 맡는다. 기동 시 고아 상태도 여기서 정리된다.
     worker = get_worker()
     await worker.start()
@@ -40,8 +55,11 @@ app = FastAPI(title="Studio", lifespan=lifespan)
 app.include_router(health_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(admin_users_router, prefix="/api")
+app.include_router(admin_notices_router, prefix="/api")
 app.include_router(admin_projects_router, prefix="/api")
+app.include_router(admin_system_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
+app.include_router(notices_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
 
 
@@ -50,6 +68,37 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
         content={"code": exc.code, "message": exc.message},
+    )
+
+
+# loc의 앞머리는 값이 어디서 왔는지(body/query/...)를 가리킬 뿐 항목 이름이 아니다.
+_LOC_PREFIXES = ("body", "query", "path", "header", "cookie")
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """FastAPI 기본 422 본문({"detail": [...]})을 프로젝트 공통 {code, message}로 바꾼다.
+
+    프론트의 toApiError는 code·message만 읽는다. 그래서 기본 본문 그대로 두면 화면에
+    "알 수 없는 오류가 발생했습니다." 한 줄만 뜨고 어떤 항목이 왜 거부됐는지 알 수 없다.
+    특히 시스템 설정 화면은 14개 필드를 한 번에 PUT하므로 항목 이름이 없으면 손쓸 수가 없다.
+    상태 코드는 422 그대로 둔다 — 기존 테스트·클라이언트의 기대를 바꾸지 않는다.
+    """
+    message = "요청 값이 올바르지 않습니다."
+    errors = exc.errors()
+    if errors:
+        first = errors[0]
+        field = ".".join(
+            str(part) for part in first.get("loc", ()) if part not in _LOC_PREFIXES
+        )
+        # 커스텀 validator가 낸 메시지에는 pydantic이 "Value error, " 접두사를 붙인다.
+        reason = str(first.get("msg", "")).removeprefix("Value error, ")
+        message = f"{field}: {reason}" if field else reason or message
+    return JSONResponse(
+        status_code=422,
+        content={"code": "VALIDATION_ERROR", "message": message},
     )
 
 

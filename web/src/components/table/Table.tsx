@@ -9,6 +9,9 @@ export type Column<T> = {
   // 쓰는 쪽이 페이지 오프셋을 더한다(표는 페이징을 모른다).
   cell: (row: T, index: number) => ReactNode
   align?: Align // 기본 left
+  // 열 너비(px). 주지 않으면 브라우저가 내용에 맞춰 정한다.
+  // 순번처럼 내용 폭이 들쭉날쭉해도 자리는 고정이어야 하는 열에 쓴다.
+  width?: number
 }
 
 const ALIGN_CLASS: Record<Align, string> = {
@@ -42,6 +45,7 @@ export function Table<T>({
             {columns.map((col) => (
               <th
                 key={col.header}
+                style={col.width ? { width: col.width } : undefined}
                 className={`px-4 py-3 font-medium ${ALIGN_CLASS[headerAlign ?? 'center']}`}
               >
                 {col.header}

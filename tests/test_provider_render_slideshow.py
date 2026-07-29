@@ -85,3 +85,34 @@ async def test_missing_srt_raises(monkeypatch, tmp_path):
 
 def test_registry_has_render_slideshow():
     assert REGISTRY["render"]["slideshow"] is SlideshowRender
+
+
+@pytest.mark.asyncio
+async def test_run_uses_render_options_from_ctx_settings(monkeypatch, tmp_path):
+    """렌더 옵션이 .env가 아니라 ctx.settings에서 온다 — 파이프라인이 주입한 값이 쓰인다."""
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    ctx = StageContext(
+        topic="t", inputs=_INPUTS, input_assets=_ASSETS, workdir="projects/9/render",
+        settings={
+            "render_bg_color": "#123456",
+            "render_font": "Nanum Gothic",
+            "render_font_size": 55,
+        },
+    )
+    await SlideshowRender(runner=_fake_runner, exe="/bin/ffmpeg").run(ctx)
+
+    cmd = _calls[0]["cmd"]
+    assert "color=c=#123456:s=1080x1920" in cmd
+    vf = cmd[cmd.index("-vf") + 1]
+    assert "Nanum Gothic" in vf
+    assert "55" in vf
+
+
+@pytest.mark.asyncio
+async def test_run_falls_back_to_env_when_ctx_settings_empty(monkeypatch, tmp_path):
+    """provider 단위 테스트가 ctx.settings를 비워둬도 동작한다 (stage_setting 폴백)."""
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    await SlideshowRender(runner=_fake_runner, exe="/bin/ffmpeg").run(_ctx())
+
+    cmd = _calls[0]["cmd"]
+    assert "color=c=#0f172a:s=1080x1920" in cmd

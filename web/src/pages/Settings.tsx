@@ -1,34 +1,14 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { FormError } from '../components/FormError'
 import { Modal } from '../components/Modal'
+import { SettingRow } from '../components/SettingRow'
 import { TextField } from '../components/TextField'
 import { account } from '../lib/account'
 import { ApiError } from '../lib/api'
+import { usePasswordMinLen } from '../lib/policy'
 import { setThemePref, useThemePref, type ThemePref } from '../lib/theme'
 
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
-const PASSWORD_MIN_LEN = 8
-
-// 설정 항목 한 줄: 왼쪽에 라벨·설명, 오른쪽에 조작 요소. 항목이 늘면 이 줄을 더 쌓으면 된다.
-function SettingRow({
-  label,
-  description,
-  children,
-}: {
-  label: string
-  description: string
-  children: ReactNode
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 py-4">
-      <div>
-        <div className="text-sm font-medium text-fg">{label}</div>
-        <div className="mt-0.5 text-xs text-fg-muted">{description}</div>
-      </div>
-      {children}
-    </div>
-  )
-}
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'system', label: '시스템' },
@@ -66,6 +46,7 @@ function ChangePasswordModal({
   onClose: () => void
   onChanged: () => void
 }) {
+  const passwordMinLen = usePasswordMinLen()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -73,10 +54,10 @@ function ChangePasswordModal({
   const [submitting, setSubmitting] = useState(false)
 
   // 서버가 최종 강제하지만, 즉각적인 피드백을 위해 클라이언트에서도 먼저 막는다.
-  const tooShort = next.length > 0 && next.length < PASSWORD_MIN_LEN
+  const tooShort = next.length > 0 && next.length < passwordMinLen
   const mismatch = confirm.length > 0 && next !== confirm
   const canSubmit =
-    !submitting && current.length > 0 && next.length >= PASSWORD_MIN_LEN && next === confirm
+    !submitting && current.length > 0 && next.length >= passwordMinLen && next === confirm
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -111,7 +92,7 @@ function ChangePasswordModal({
           autoComplete="new-password"
           value={next}
           onChange={(e) => setNext(e.target.value)}
-          error={tooShort ? `${PASSWORD_MIN_LEN}자 이상 입력해 주세요.` : undefined}
+          error={tooShort ? `${passwordMinLen}자 이상 입력해 주세요.` : undefined}
         />
         <TextField
           id="confirm-password"

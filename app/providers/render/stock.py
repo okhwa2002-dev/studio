@@ -1,11 +1,11 @@
 import logging
 
-from app.config import get_settings
 from app.constants import AssetKind
 from app.providers.base import Provider, StageContext, StageResult
 from app.providers.render.input import input_audio_path, input_srt_path
 from app.providers.render.sources import enabled_sources, queries_for, select_clip
 from app.providers.render.timing import scene_spans
+from app.runtime_settings import stage_setting
 from app.utils import ffmpeg, storage
 from app.utils.errors import AppError
 from app.utils.stock.base import PHOTO
@@ -39,7 +39,10 @@ class StockRender(Provider):
         self._download = downloader or download
 
     def validate(self, settings: dict) -> None:
-        enabled_sources()   # 키가 하나도 없으면 여기서 STOCK_API_KEY_MISSING → 실행 전 조기 실패
+        # 키가 하나도 없으면 여기서 STOCK_API_KEY_MISSING → 실행 전 조기 실패.
+        # 폴백은 run()과 같은 stage_setting으로 통일한다 — 한 개념에 관용구가 둘이면
+        # 어느 쪽 기본값이 쓰이는지 읽는 사람이 매번 따져봐야 한다.
+        enabled_sources(stage_setting(settings, "stock_sources"))
 
     def _exe_path(self) -> str:
         if self._exe is None:
@@ -48,7 +51,6 @@ class StockRender(Provider):
 
     async def _prepare_scene(self, ctx, sources, scene, index, seconds, used_keys, sources_dir):
         """씬 하나의 소재를 고르고 내려받는다. 실패한 후보는 건너뛰고 다음을 시도한다."""
-        settings = get_settings()
         queries = queries_for(scene.get("on_screen", ""), ctx.topic)
         for _ in range(_MAX_CLIP_TRIES):
             clip, query = await select_clip(sources, queries, used_keys, ctx.attempt + index)
@@ -56,7 +58,9 @@ class StockRender(Provider):
             rel = f"{sources_dir}/scene{index + 1}{_extension(clip.kind)}"
             try:
                 await self._download(
-                    clip.url, rel, settings.stock_max_bytes, settings.stock_timeout_sec
+                    clip.url, rel,
+                    stage_setting(ctx.settings, "stock_max_bytes"),
+                    stage_setting(ctx.settings, "stock_timeout_sec"),
                 )
             except Exception:
                 logger.warning("소재 내려받기 실패 — 다음 후보로: %s", clip.url, exc_info=True)
@@ -68,14 +72,15 @@ class StockRender(Provider):
                        "배경 소재를 내려받지 못했습니다. 잠시 후 다시 시도해 주세요.")
 
     async def run(self, ctx: StageContext) -> StageResult:
-        settings = get_settings()
         audio_abs = str(storage.resolve(input_audio_path(ctx)))
         srt_rel = input_srt_path(ctx)
         duration = ctx.inputs.get("captions", {}).get("duration_sec")
         scenes = (ctx.inputs.get("script") or {}).get("scenes") or []
         spans = scene_spans(scenes, duration)   # 씬·duration 검증도 여기서 함께 한다
 
-        sources = self._sources or enabled_sources()
+        sources = self._sources or enabled_sources(
+            stage_setting(ctx.settings, "stock_sources")
+        )
         sources_dir = f"{ctx.workdir}/{_SOURCES_DIR}"
         storage.clear_dir(sources_dir)   # 재생성 시 이전 소재를 남기지 않는다
 
@@ -99,8 +104,8 @@ class StockRender(Provider):
             out_rel=out_rel,
             width=_WIDTH,
             height=_HEIGHT,
-            font=settings.render_font,
-            font_size=settings.render_font_size,
+            font=stage_setting(ctx.settings, "render_font"),
+            font_size=stage_setting(ctx.settings, "render_font_size"),
         )
         out_abs = storage.resolve(out_rel)
         out_abs.parent.mkdir(parents=True, exist_ok=True)

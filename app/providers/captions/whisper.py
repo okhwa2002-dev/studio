@@ -1,11 +1,11 @@
 import asyncio
 from functools import lru_cache
 
-from app.config import get_settings
 from app.constants import AssetKind
 from app.providers.base import Provider, StageContext, StageResult
 from app.providers.captions.audio import input_audio_path
 from app.providers.captions.srt import to_srt
+from app.runtime_settings import stage_setting
 from app.utils import storage
 
 _FILENAME = "captions.srt"
@@ -54,7 +54,7 @@ class WhisperCaptions(Provider):
 
     async def run(self, ctx: StageContext) -> StageResult:
         audio = storage.resolve(input_audio_path(ctx))
-        model_size = get_settings().whisper_model
+        model_size = stage_setting(ctx.settings, "whisper_model")
         # CPU를 수십 초 점유하는 블로킹 호출 — 이벤트 루프를 비켜준다.
         words, language, duration = await asyncio.to_thread(
             self._transcribe, str(audio), model_size, ctx.on_progress
