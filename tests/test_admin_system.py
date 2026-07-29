@@ -68,6 +68,35 @@ async def test_put_back_to_default_removes_the_row(client, db_session):
     assert row.scalar() == 0
 
 
+async def test_put_back_to_default_removes_the_row_for_bool(client, db_session):
+    """bool도 delete-on-default가 성립해야 한다.
+
+    Python의 False == 0 / True == 1 동등성 때문에 이 비교가 가장 깨지기 쉬운 타입이
+    bool이다. 깨지면 그 키는 행이 남은 채 .env 변경에 영원히 반응하지 않는다 —
+    int(render_font_size) 하나로만 검증하던 공백을 메운다.
+    """
+    await _login(client, db_session, "sys-reset-bool@example.com")
+    current = (await client.get("/api/admin/system/settings")).json()["settings"]
+    assert current["signup_auto_approve"] is False  # conftest가 고정한 .env 기본값
+
+    on = await client.put(
+        "/api/admin/system/settings", json={**current, "signup_auto_approve": True}
+    )
+    assert on.status_code == 200
+    assert on.json()["overridden"] == ["signup_auto_approve"]
+
+    off = await client.put(
+        "/api/admin/system/settings", json={**current, "signup_auto_approve": False}
+    )
+    assert off.status_code == 200
+    assert off.json()["overridden"] == []
+
+    from sqlalchemy import text
+
+    row = await db_session.execute(text("SELECT COUNT(*) FROM system_settings"))
+    assert row.scalar() == 0
+
+
 async def test_put_rejects_out_of_range_value(client, db_session):
     await _login(client, db_session, "sys-range@example.com")
     current = (await client.get("/api/admin/system/settings")).json()["settings"]

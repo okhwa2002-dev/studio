@@ -66,6 +66,46 @@ async def test_existing_stage_keeps_its_provider_when_setting_changes(client, db
     assert script["provider"] == "fake"
 
 
+async def test_next_stage_created_on_approval_uses_runtime_provider(client, db_session):
+    """승인으로 새로 만들어지는 다음 단계도 관리자 설정의 provider를 쓴다.
+
+    _next_provider는 여태 커버리지가 0이었다 — conftest가 .env provider를 런타임
+    기본값과 똑같이 fake로 맞춰놔서, get_settings() 시절 코드로 되돌려도 실패하는
+    테스트가 하나도 없었다. 그래서 여기서는 반드시 .env 기본값(fake)과 **다른**
+    값(edge_tts)을 오버라이드해, 런타임 설정을 실제로 읽는지 구분되게 한다.
+
+    HTTP의 승인 라우트 대신 파이프라인을 직접 구동한다(test_pipeline_run_stage.py와 동일).
+    """
+    from app.core import pipeline
+
+    user = await _admin(client, db_session, "pipe-next@example.com")
+    await _override(db_session, "voice_provider", "edge_tts")
+
+    created = await client.post(
+        "/api/projects", json={"title": "테스트", "topic": "주제", "auto_run": False}
+    )
+    project_id = created.json()["project"]["id"]
+
+    conn = await raw_connection(db_session)
+    project = pipeline.decode_stage(
+        dict(await queries.find_project_by_id(conn, id=project_id))
+    )
+    stage = pipeline.decode_stage(
+        dict(await queries.find_stage(conn, project_id=project_id, name="script"))
+    )
+
+    assert await pipeline.queue_stage(db_session, stage["id"], actor_id=user.id)
+    claimed = await pipeline.claim_stage(db_session, stage["id"], actor_id=user.id)
+    assert claimed is not None
+    ran = await pipeline.run_claimed_stage(db_session, project, claimed, actor_id=user.id)
+
+    await pipeline.approve_stage(db_session, project, ran, actor_id=user.id)
+
+    conn = await raw_connection(db_session)  # 커밋이 커넥션을 반납한다 — 재획득 필수
+    voice = await queries.find_stage(conn, project_id=project_id, name="voice")
+    assert voice["provider"] == "edge_tts"
+
+
 async def test_stage_context_receives_runtime_settings(client, db_session, monkeypatch):
     """provider는 DB를 읽지 않는다 — 파이프라인이 ctx.settings에 실어 보낸다.
 
