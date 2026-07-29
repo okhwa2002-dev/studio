@@ -5,6 +5,7 @@ from app.models.notice_read import NoticeRead
 from app.models.project import Project
 from app.models.refresh_token import RefreshToken
 from app.models.stage import Stage
+from app.models.system_setting import SystemSetting
 from app.models.user import User
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "Project",
     "RefreshToken",
     "Stage",
+    "SystemSetting",
     "User",
 ]
