@@ -7,6 +7,18 @@ os.environ["RENDER_PROVIDER"] = "fake"  # 통합 테스트는 실제 ffmpeg 없�
 os.environ["WHISPER_MODEL"] = "small"  # 로컬 .env 값에 테스트가 흔들리지 않게 고정
 os.environ["JWT_SECRET"] = "test-jwt-secret-that-is-32-bytes!"
 
+# 아래 값들은 시스템 설정 테스트가 "기본값"으로 단언하는 값이다.
+# 로컬 .env에 다른 값이 있어도 테스트가 흔들리지 않도록 여기서 못박는다.
+os.environ["RENDER_BG_COLOR"] = "#0f172a"
+os.environ["RENDER_FONT"] = "Malgun Gothic"
+os.environ["RENDER_FONT_SIZE"] = "30"
+os.environ["STOCK_SOURCES"] = '["pexels", "pixabay"]'   # 복합 타입은 JSON으로 준다
+os.environ["STOCK_MAX_BYTES"] = "52428800"
+os.environ["STOCK_TIMEOUT_SEC"] = "30"
+os.environ["FAILED_LOGIN_LIMIT"] = "5"
+os.environ["PASSWORD_MIN_LEN"] = "8"
+os.environ["SIGNUP_AUTO_APPROVE"] = "false"
+
 from app.config import get_settings  # noqa: E402
 
 get_settings.cache_clear()  # 위 env가 반영되도록 lru_cache 초기화

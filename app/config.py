@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     secure_cookies: bool = False
     log_sql: bool = False
     failed_login_limit: int = 5
+    # 비밀번호 최소 길이. 관리자가 시스템 설정에서 올릴 수 있고, 8 밑으로는 못 내린다.
+    password_min_len: int = 8
+    # 참이면 가입 즉시 ACTIVE. 거짓이면 관리자 승인 대기(PENDING).
+    signup_auto_approve: bool = False
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     script_provider: str = "openai"
