@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { FormError } from '../../components/FormError'
 import { Modal } from '../../components/Modal'
+import { PinnedBadge } from '../../components/PinnedBadge'
+import { badgedSeqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
 import { ApiError } from '../../lib/api'
@@ -78,25 +80,14 @@ export function Notices() {
       n.body.toLowerCase().includes(keyword),
   )
 
-  // 고정 공지는 최신순 일련번호 바깥에 있다. 번호를 붙이면 목록의 번호가
-  // 뒤죽박죽이 되므로 '-'를 보여주고, 나머지에만 이어지는 번호를 준다.
-  const unpinnedTotal = filteredRows.filter((n) => !isY(n.pinned_yn)).length
-
   const columns: Column<Notice>[] = [
-    {
-      header: 'No',
-      align: 'center',
-      cell: (notice) => {
-        if (isY(notice.pinned_yn)) return '-'
-        const order = filteredRows.filter((n) => !isY(n.pinned_yn)).indexOf(notice)
-        return unpinnedTotal - order
-      },
-    },
+    // 고정 공지는 최신순 일련번호 바깥에 있다. 번호를 붙이면 목록의 번호가
+    // 뒤죽박죽이 되므로 '공지' 배지를 놓고, 나머지에만 이어지는 번호를 준다.
+    badgedSeqColumn<Notice>(filteredRows, (n) => isY(n.pinned_yn), <PinnedBadge />),
     {
       header: '제목',
       cell: (notice) => (
         <span className="flex items-center gap-2">
-          {isY(notice.pinned_yn) && <span aria-label="고정">📌</span>}
           <span className="truncate">{notice.title}</span>
           {!notice.is_read && <NewBadge />}
         </span>

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FormError } from '../../components/FormError'
 import { Modal } from '../../components/Modal'
-import { seqColumn } from '../../components/table/seqColumn'
+import { PinnedBadge } from '../../components/PinnedBadge'
+import { badgedSeqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
 import {
@@ -250,7 +251,8 @@ export function AdminNotices() {
   })
 
   const columns: Column<AdminNotice>[] = [
-    seqColumn<AdminNotice>(filteredRows.length, page, PAGE_SIZE),
+    // 고정 공지는 순번 바깥이다 — 번호 대신 '공지' 배지를 놓는다(사용자 목록과 같은 규칙).
+    badgedSeqColumn<AdminNotice>(filteredRows, (n) => isY(n.pinned_yn), <PinnedBadge />),
     { header: '제목', cell: (n) => n.title },
     {
       header: '상태',
