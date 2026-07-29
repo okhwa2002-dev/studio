@@ -40,3 +40,11 @@ FROM faqs f
 LEFT JOIN users u ON u.id = f.created_by
 WHERE f.deleted_at IS NULL
 ORDER BY f.sort_order, f.id;
+
+-- name: list_published_faqs
+-- 사용자 목록. 노출 조건이 status 하나라 시각 비교가 없다(공지와 달리 :now가 필요 없다).
+-- answer까지 함께 준다 — 아코디언이 이미 받은 답변을 펼치는 구조다.
+SELECT id, question, answer, category
+FROM faqs
+WHERE deleted_at IS NULL AND status = 'PUBLISHED'
+ORDER BY sort_order, id;
