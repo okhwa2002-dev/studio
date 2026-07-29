@@ -105,6 +105,11 @@ export const api = {
       method: 'PATCH',
       body: body === undefined ? undefined : JSON.stringify(body),
     }),
+  put: <T,>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: 'PUT',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
   // 이름이 del인 것은 delete가 JS 연산자와 겹쳐 읽기 헷갈리기 때문이다.
   del: <T,>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
