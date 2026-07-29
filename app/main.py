@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.api.admin_faqs import router as admin_faqs_router
 from app.api.admin_notices import router as admin_notices_router
 from app.api.admin_projects import router as admin_projects_router
 from app.api.admin_system import router as admin_system_router
@@ -56,6 +57,7 @@ app.include_router(health_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(admin_users_router, prefix="/api")
 app.include_router(admin_notices_router, prefix="/api")
+app.include_router(admin_faqs_router, prefix="/api")
 app.include_router(admin_projects_router, prefix="/api")
 app.include_router(admin_system_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
