@@ -2,7 +2,7 @@ import json
 import logging
 import time
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, ValidationError, field_validator
 
 from app.config import get_settings
 from app.queries import queries
@@ -20,6 +20,14 @@ class RuntimeSettings(BaseModel):
     필드 정의가 곧 화이트리스트·타입·범위다. 기본값은 default_factory로 .env에서
     읽는다 — 인스턴스를 만들 때 평가되므로 테스트가 env를 바꿔도 따라온다.
     """
+
+    # pydantic v2는 이 옵션이 없으면 default_factory 결과를 검증하지 않는다. 그러면
+    # .env가 범위를 벗어나도 조용히 유효값이 되고(예: PASSWORD_MIN_LEN=4가 실효 하한이 됨),
+    # 더 나쁘게는 GET이 그 검증 안 된 값을 화면에 내려보낸 뒤 화면이 폼 전체를 PUT하면
+    # 그때서야 422가 나 "관리자가 손대지도 않은 항목 때문에 아무것도 저장할 수 없는" 상태가 된다.
+    # .env도 다른 입력과 똑같이 검증해서, 범위 위반은 기동 시점에 확정적으로 실패시킨다
+    # (기동 검사는 app/main.py의 lifespan → check_env_defaults()).
+    model_config = ConfigDict(validate_default=True)
 
     # --- 파이프라인 기본값 ---
     script_provider: str = Field(default_factory=lambda: get_settings().script_provider)
@@ -50,6 +58,8 @@ class RuntimeSettings(BaseModel):
         default_factory=lambda: get_settings().failed_login_limit, ge=1, le=100
     )
     # 하한 8은 협상 대상이 아니다. 관리자 실수로 보안이 후퇴하는 경로를 만들지 않는다.
+    # validate_default=True 덕에 이 하한은 .env 경로에도 똑같이 적용된다
+    # (PASSWORD_MIN_LEN=4인 배포는 저장되는 게 아니라 기동 자체가 실패한다).
     password_min_len: int = Field(
         default_factory=lambda: get_settings().password_min_len, ge=8, le=128
     )
@@ -113,6 +123,8 @@ class RuntimeSettings(BaseModel):
             return cls(**parsed)
         except Exception:
             # 범위를 벗어난 값이 어떤 경로로든 DB에 들어간 경우. 전부 기본값으로 후퇴한다.
+            # 이 cls()는 .env 기본값만 쓰므로 안전하다 — 범위 밖 .env는 기동 시
+            # check_env_defaults()가 이미 걸러냈다(돌고 있는 앱에서는 성립할 수 없다).
             logger.warning("시스템 설정이 유효하지 않아 기본값을 씁니다.", exc_info=True)
             return cls()
 
@@ -122,10 +134,40 @@ def stage_setting(settings: dict, key: str):
 
     파이프라인이 항상 주입하지만, provider 단위 테스트는 ctx.settings를 비워둘 수
     있으므로 .env 기본값으로 폴백한다.
+
+    여기의 맨몸 RuntimeSettings()는 이제 .env를 검증한다(validate_default=True).
+    다만 범위 밖 .env는 기동 시 check_env_defaults()가 먼저 막으므로, 돌고 있는
+    앱에서 이 호출이 ValidationError를 던지는 상황은 발생할 수 없다.
     """
     if key in settings:
         return settings[key]
     return getattr(RuntimeSettings(), key)
+
+
+class EnvSettingsError(RuntimeError):
+    """.env 기본값이 허용 범위를 벗어났다. 기동을 중단시키는 용도로만 쓴다."""
+
+
+def check_env_defaults() -> None:
+    """.env에서 온 기본값이 전부 유효한지 기동 시 한 번 확인한다.
+
+    validate_default=True만으로도 검증은 걸리지만, 그 시점이 "우연히 모델을 처음
+    만드는 요청"이라 원인이 엉뚱한 곳에서 드러난다. 여기서 미리 터뜨리되 pydantic
+    원문 트레이스백 대신 "어떤 .env 키를 어떤 범위로 고쳐야 하는지"를 알려준다.
+    """
+    try:
+        RuntimeSettings()
+    except ValidationError as exc:
+        lines = []
+        for err in exc.errors():
+            key = str(err["loc"][0]) if err["loc"] else "?"
+            # 커스텀 validator의 메시지는 pydantic이 "Value error, " 접두사를 붙인다.
+            reason = str(err.get("msg", "")).removeprefix("Value error, ")
+            lines.append(f"  - {key.upper()} = {err.get('input')!r} → {reason}")
+        raise EnvSettingsError(
+            ".env 값이 허용 범위를 벗어나 기동할 수 없습니다. 아래 항목을 고쳐 주세요.\n"
+            + "\n".join(lines)
+        ) from exc
 
 
 # 캐시를 TTL과 명시적 무효화 둘 다로 관리한다. 무효화만 두면 다중 프로세스 배포에서

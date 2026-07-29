@@ -18,6 +18,7 @@ from app.api.projects import router as projects_router
 from app.auth.admin_router import router as admin_users_router
 from app.auth.router import router as auth_router
 from app.core.worker import get_worker
+from app.runtime_settings import EnvSettingsError, check_env_defaults
 from app.utils.errors import DEFAULT_ERROR, AppError
 from app.utils.logging import configure_logging
 
@@ -27,6 +28,16 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 런타임 설정의 기본값은 .env에서 온다. 범위를 벗어난 .env는 여기서 기동을 멈춘다 —
+    # 그러지 않으면 "관리자가 손대지도 않은 항목 때문에 시스템 설정이 저장되지 않는"
+    # 식으로 한참 뒤 엉뚱한 곳에서 드러난다. 트레이스백만으로는 어떤 키가 문제인지
+    # 알 수 없으므로, 고쳐야 할 키와 이유를 먼저 로그로 남기고 예외를 그대로 올린다.
+    try:
+        check_env_defaults()
+    except EnvSettingsError as exc:
+        logger.error("%s", exc)
+        raise
+
     # 단계 실행은 요청이 아니라 이 워커가 맡는다. 기동 시 고아 상태도 여기서 정리된다.
     worker = get_worker()
     await worker.start()
