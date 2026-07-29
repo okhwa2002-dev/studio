@@ -12,6 +12,7 @@ export const NAV: NavItem[] = [
   { path: '/dashboard', label: '대시보드', icon: '📊' },
   { path: '/projects', label: '프로젝트', icon: '🎬' },
   { path: '/notices', label: '공지사항', icon: '📢' },
+  { path: '/faqs', label: 'FAQ', icon: '❓' },
   { path: '/settings', label: '설정', icon: '⚙️' },
   { path: '/admin/approvals', label: '가입 승인', icon: '🛡️', adminOnly: true },
   { path: '/admin/users', label: '사용자 관리', icon: '👥', adminOnly: true },

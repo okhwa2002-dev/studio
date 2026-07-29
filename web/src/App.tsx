@@ -8,6 +8,7 @@ import { AdminSystem } from './pages/admin/AdminSystem'
 import { AdminUsers } from './pages/admin/AdminUsers'
 import { Approvals } from './pages/admin/Approvals'
 import { Dashboard } from './pages/Dashboard'
+import { Faqs } from './pages/faqs/Faqs'
 import { Login } from './pages/Login'
 import { Notices } from './pages/notices/Notices'
 import { PendingApproval } from './pages/PendingApproval'
@@ -45,6 +46,7 @@ function Routing() {
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/notices" element={<Notices />} />
+          <Route path="/faqs" element={<Faqs />} />
           <Route path="/settings" element={<Settings />} />
           <Route element={<RequireAdmin />}>
             <Route path="/admin/approvals" element={<Approvals />} />
