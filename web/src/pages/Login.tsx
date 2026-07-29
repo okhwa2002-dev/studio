@@ -17,7 +17,10 @@ export function Login() {
   const [error, setError] = useState<string>()
   const [pending, setPending] = useState(false)
 
-  const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
+  const state = location.state as { from?: string; notice?: string } | null
+  const from = state?.from ?? '/dashboard'
+  // 다른 화면이 남긴 1회성 안내(예: 가입 자동 승인으로 곧바로 로그인 가능해진 경우).
+  const notice = state?.notice
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -42,6 +45,11 @@ export function Login() {
   return (
     <AuthCard title="로그인">
       <form onSubmit={onSubmit} className="space-y-4">
+        {notice && (
+          <p className="rounded-md bg-green-50 px-4 py-2 text-sm text-green-700 dark:bg-green-500/10 dark:text-green-300">
+            {notice}
+          </p>
+        )}
         <FormError message={error} />
         <TextField
           id="email"

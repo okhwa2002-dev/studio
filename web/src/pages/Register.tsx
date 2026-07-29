@@ -63,8 +63,18 @@ export function Register() {
 
     setPending(true)
     try {
-      await register(email, password, name.trim())
-      // 가입한 사용자는 status=pending이라 로그인할 수 없다. 대기 안내로 보낸다.
+      const status = await register(email, password, name.trim())
+      if (status === 'ACTIVE') {
+        // 가입 자동 승인이 켜진 배포. 이미 승인된 계정에게 "관리자 승인 후 로그인할 수
+        // 있습니다"라고 안내하면 거짓말이 되므로 /pending으로 보내지 않는다.
+        // /auth/register는 인증 쿠키를 주지 않으니 로그인 화면으로 안내한다.
+        navigate('/login', {
+          replace: true,
+          state: { notice: '가입이 완료되었습니다. 바로 로그인해 주세요.' },
+        })
+        return
+      }
+      // PENDING — 관리자 승인 전에는 로그인할 수 없다. 대기 안내로 보낸다.
       navigate('/pending', { replace: true })
     } catch (e) {
       // 409 = 이미 등록된 이메일. 서버 메시지를 그대로 보여준다.
