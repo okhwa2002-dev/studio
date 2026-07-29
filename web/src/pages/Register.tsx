@@ -6,6 +6,7 @@ import { FormError } from '../components/FormError'
 import { TextField } from '../components/TextField'
 import { ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { usePasswordMinLen } from '../lib/policy'
 
 type FieldErrors = {
   name?: string
@@ -15,7 +16,13 @@ type FieldErrors = {
 }
 
 // 클라이언트 검증은 UX 보조일 뿐 신뢰 경계가 아니다. 진짜 검증은 서버가 한다.
-function validate(name: string, email: string, password: string, confirm: string): FieldErrors {
+function validate(
+  name: string,
+  email: string,
+  password: string,
+  confirm: string,
+  minLen: number,
+): FieldErrors {
   const errors: FieldErrors = {}
   const trimmed = name.trim()
   if (trimmed.length < 1 || trimmed.length > 50) {
@@ -24,8 +31,8 @@ function validate(name: string, email: string, password: string, confirm: string
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = '올바른 이메일 형식이 아닙니다.'
   }
-  if (password.length < 8) {
-    errors.password = '비밀번호는 8자 이상이어야 합니다.'
+  if (password.length < minLen) {
+    errors.password = `비밀번호는 ${minLen}자 이상이어야 합니다.`
   }
   if (password !== confirm) {
     errors.confirm = '비밀번호가 일치하지 않습니다.'
@@ -36,6 +43,7 @@ function validate(name: string, email: string, password: string, confirm: string
 export function Register() {
   const { register } = useAuth()
   const navigate = useNavigate()
+  const passwordMinLen = usePasswordMinLen()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -49,7 +57,7 @@ export function Register() {
     event.preventDefault()
     setError(undefined)
 
-    const errors = validate(name, email, password, confirm)
+    const errors = validate(name, email, password, confirm, passwordMinLen)
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) return
 
