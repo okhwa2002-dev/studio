@@ -66,13 +66,18 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
     # 비밀번호 변경과 같은 규칙·같은 에러 코드를 쓴다. 가입 경로에만 검증이 없어서
     # 1자 비밀번호로도 계정이 만들어지던 구멍을 막는다.
-    min_len = (await get_runtime_settings(conn)).password_min_len
+    runtime = await get_runtime_settings(conn)
+    min_len = runtime.password_min_len
     if len(body.password) < min_len:
         raise AppError(400, "WEAK_PASSWORD", f"비밀번호는 {min_len}자 이상이어야 합니다.")
 
     existing = await queries.find_by_email(conn, email=email)
     if existing is not None:
         raise Errors.conflict("이미 등록된 이메일입니다.")
+
+    # 자동 승인이 켜져 있으면 승인 대기를 건너뛴다. 이미 PENDING인 사용자에게는
+    # 소급되지 않는다 — 설정은 이후 가입에만 적용된다.
+    status = UserStatus.ACTIVE if runtime.signup_auto_approve else UserStatus.PENDING
 
     now = now_local()
     try:
@@ -82,7 +87,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
             name=name,
             password_hash=hash_password(body.password),
             role=UserRole.MEMBER,
-            status=UserStatus.PENDING,
+            status=status,
             created_at=now,
             updated_at=now,
         )
@@ -92,7 +97,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
         # 500이 아닌 409 CONFLICT로 변환한다.
         raise Errors.conflict("이미 등록된 이메일입니다.")
     await db.commit()
-    return {"id": user_id, "status": UserStatus.PENDING}
+    return {"id": user_id, "status": status}
 
 
 class LoginRequest(BaseModel):
