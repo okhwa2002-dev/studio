@@ -76,6 +76,12 @@ async def test_put_rejects_out_of_range_value(client, db_session):
         "/api/admin/system/settings", json={**current, "password_min_len": 4}
     )
     assert resp.status_code == 422
+    # 화면이 읽는 것은 code·message뿐이다. FastAPI 기본 {"detail": [...]}를 그대로
+    # 내보내면 14개 필드 중 무엇이 문제인지 알 수 없는 "알 수 없는 오류"만 뜬다.
+    body = resp.json()
+    assert body["code"] == "VALIDATION_ERROR"
+    assert "password_min_len" in body["message"]
+    assert "8" in body["message"]  # 허용 하한이 메시지에 드러난다
 
 
 async def test_put_rejects_unknown_provider(client, db_session):
@@ -86,6 +92,10 @@ async def test_put_rejects_unknown_provider(client, db_session):
         "/api/admin/system/settings", json={**current, "script_provider": "nope"}
     )
     assert resp.status_code == 422
+    body = resp.json()
+    assert body["code"] == "VALIDATION_ERROR"
+    # 커스텀 validator의 한국어 메시지가 pydantic의 "Value error, " 접두사 없이 그대로 온다.
+    assert body["message"].startswith("script_provider: 알 수 없는 provider입니다")
 
 
 async def test_put_records_who_changed_it(client, db_session):

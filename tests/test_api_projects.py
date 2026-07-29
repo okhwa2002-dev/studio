@@ -140,6 +140,10 @@ async def test_create_rejects_blank_title(client, db_session):
     await _login(client, db_session, "blank-title@example.com")
     resp = await client.post("/api/projects", json={"title": "   ", "topic": "주제"})
     assert resp.status_code == 422
+    # 422 정규화는 시스템 설정 화면만이 아니라 전역이다 — 여기서도 항목 이름이 실린다.
+    body = resp.json()
+    assert body["code"] == "VALIDATION_ERROR"
+    assert "title" in body["message"]
 
 
 async def test_create_rejects_blank_topic(client, db_session):

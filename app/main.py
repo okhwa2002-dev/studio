@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -67,6 +68,37 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
         content={"code": exc.code, "message": exc.message},
+    )
+
+
+# loc의 앞머리는 값이 어디서 왔는지(body/query/...)를 가리킬 뿐 항목 이름이 아니다.
+_LOC_PREFIXES = ("body", "query", "path", "header", "cookie")
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """FastAPI 기본 422 본문({"detail": [...]})을 프로젝트 공통 {code, message}로 바꾼다.
+
+    프론트의 toApiError는 code·message만 읽는다. 그래서 기본 본문 그대로 두면 화면에
+    "알 수 없는 오류가 발생했습니다." 한 줄만 뜨고 어떤 항목이 왜 거부됐는지 알 수 없다.
+    특히 시스템 설정 화면은 14개 필드를 한 번에 PUT하므로 항목 이름이 없으면 손쓸 수가 없다.
+    상태 코드는 422 그대로 둔다 — 기존 테스트·클라이언트의 기대를 바꾸지 않는다.
+    """
+    message = "요청 값이 올바르지 않습니다."
+    errors = exc.errors()
+    if errors:
+        first = errors[0]
+        field = ".".join(
+            str(part) for part in first.get("loc", ()) if part not in _LOC_PREFIXES
+        )
+        # 커스텀 validator가 낸 메시지에는 pydantic이 "Value error, " 접두사를 붙인다.
+        reason = str(first.get("msg", "")).removeprefix("Value error, ")
+        message = f"{field}: {reason}" if field else reason or message
+    return JSONResponse(
+        status_code=422,
+        content={"code": "VALIDATION_ERROR", "message": message},
     )
 
 
