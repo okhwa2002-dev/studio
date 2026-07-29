@@ -68,12 +68,47 @@ async def test_invalidate_forces_reload(db_session):
     assert first is not second
 
 
+async def test_invalidate_during_fetch_does_not_cache_stale_value(db_session, monkeypatch):
+    """DB 조회 중(await로 양보하는 사이) 다른 요청이 무효화하면 그 결과를 캐시에 쓰면 안 된다.
+
+    get_runtime_settings가 select_all_settings를 기다리는 동안 다른 요청이 설정을
+    저장하고 invalidate_runtime_settings()를 호출하는 상황을 재현한다. 이 몽키패치는
+    원래 쿼리로 행을 다 받은 "직후"(마지막 __anext__ 호출, 즉 list comprehension이
+    아직 실행 중인 시점)에 invalidate_runtime_settings()를 불러 그 인터리빙을 흉내낸다.
+    반환값 자체는 정상이어야 하지만(파싱은 이미 끝났으므로), 그 결과가 stale write로
+    _cache에 다시 쓰이면 안 된다 — 다음 호출도 다시 DB를 읽어야 한다.
+    """
+    original = queries.select_all_settings
+
+    async def _racy_select(conn_arg):
+        async for row in original(conn_arg):
+            yield row
+        invalidate_runtime_settings()
+
+    monkeypatch.setattr(queries, "select_all_settings", _racy_select)
+
+    conn = await raw_connection(db_session)
+    rs = await get_runtime_settings(conn)
+    assert rs.render_font_size == 30  # 파싱 결과 자체는 정상적으로 반환된다
+
+    import app.runtime_settings as rts
+
+    assert rts._cache is None  # 그러나 stale 스냅샷이 캐시에 남아있지 않아야 한다
+
+
 async def test_db_failure_falls_back_to_defaults_without_raising(db_session, monkeypatch):
     """설정 테이블 장애가 파이프라인 전체를 멈추게 하지 않는다."""
     async def _boom(*args, **kwargs):
+        # 실제 select_all_settings처럼 async generator여야 async for 소비 경로를
+        # 그대로 탄다 — 행을 내주려는 순간(첫 __anext__) 예외가 난다.
         raise RuntimeError("relation does not exist")
+        yield  # pragma: no cover - 이 줄 때문에 async generator 함수가 된다
 
     monkeypatch.setattr(queries, "select_all_settings", _boom)
     conn = await raw_connection(db_session)
     rs = await get_runtime_settings(conn)
     assert rs.render_font_size == 30
+
+    import app.runtime_settings as rts
+
+    assert rts._cache is None  # 장애 응답이 캐시에 쓰여 30초간 재시도를 막으면 안 된다

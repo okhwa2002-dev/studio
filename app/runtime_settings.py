@@ -134,6 +134,13 @@ def stage_setting(settings: dict, key: str):
 _TTL_SEC = 30.0
 _cache: RuntimeSettings | None = None
 _cached_at: float = 0.0
+# 무효화가 일어날 때마다 증가한다. get_runtime_settings가 DB를 읽는 동안(await로
+# 양보하는 사이) 다른 요청이 설정을 저장하고 invalidate_runtime_settings()를 부르면,
+# 재개된 조회는 "저장 이전" 스냅샷을 들고 있는 셈이다. 그걸 그대로 _cache에 쓰면
+# 방금 무효화한 값이 최대 30초간 다시 살아난다 — TTL+무효화 설계가 약속한
+# "같은 프로세스는 즉시 반영"이 깨진다. 조회 시작 시점의 세대를 기억해뒀다가 끝난
+# 뒤 세대가 바뀌었으면 캐시에 쓰지 않고 파싱 결과만 반환한다(다음 호출이 다시 읽는다).
+_generation: int = 0
 
 
 async def get_runtime_settings(conn) -> RuntimeSettings:
@@ -144,6 +151,7 @@ async def get_runtime_settings(conn) -> RuntimeSettings:
     if _cache is not None and now - _cached_at < _TTL_SEC:
         return _cache
 
+    gen = _generation  # DB 조회 전에 세대를 찍어둔다 — 조회 중 무효화 여부를 나중에 비교한다.
     try:
         # select_all_settings는 suffix 없는 "여러 행" 쿼리라 asyncpg 드라이버에서
         # 비동기 제너레이터로 온다 — await가 아니라 async for로 소비한다
@@ -155,13 +163,21 @@ async def get_runtime_settings(conn) -> RuntimeSettings:
         logger.warning("시스템 설정 조회에 실패해 기본값으로 진행합니다.", exc_info=True)
         return RuntimeSettings()
 
-    _cache = RuntimeSettings.from_overrides({row["key"]: row["value"] for row in rows})
+    result = RuntimeSettings.from_overrides({row["key"]: row["value"] for row in rows})
+
+    if _generation != gen:
+        # 조회하는 동안(await로 양보한 사이) 다른 요청이 값을 저장하고 무효화했다.
+        # 지금 만든 result는 그 저장 이전 스냅샷이므로 캐시에 쓰지 않고 반환만 한다.
+        return result
+
+    _cache = result
     _cached_at = now
     return _cache
 
 
 def invalidate_runtime_settings() -> None:
     """설정 저장 직후 호출한다. 같은 프로세스는 다음 조회에서 곧바로 새 값을 본다."""
-    global _cache, _cached_at
+    global _cache, _cached_at, _generation
     _cache = None
     _cached_at = 0.0
+    _generation += 1
