@@ -11,11 +11,11 @@ from app.runtime_settings import (
 
 
 @pytest.fixture
-def bad_env(monkeypatch):
-    """.env 값을 범위 밖으로 바꾼 뒤 lru_cache를 비워 실제로 반영시킨다.
+def env_default(monkeypatch):
+    """.env 값을 바꾼 뒤 lru_cache를 비워 실제로 반영시킨다.
 
-    conftest.py가 9개 값을 전부 범위 안으로 못박아두기 때문에, "범위 밖 .env"라는
-    결함은 일부러 이렇게 넣지 않으면 스위트에 구조적으로 보이지 않는다.
+    conftest.py가 9개 값을 전부 "범위 안 · 소문자"로 못박아두기 때문에, .env 자체가
+    이상한 경우의 결함은 일부러 이렇게 넣지 않으면 스위트에 구조적으로 보이지 않는다.
     """
 
     def _set(**pairs: str) -> None:
@@ -82,7 +82,22 @@ def test_render_font_size_range_is_enforced():
 def test_bg_color_must_be_hex():
     with pytest.raises(ValidationError):
         RuntimeSettings(render_bg_color="navy")
-    assert RuntimeSettings(render_bg_color="#ABCDEF").render_bg_color == "#ABCDEF"
+    # 대문자 hex도 받되 소문자로 정규화한다 (아래 테스트가 그 이유를 설명한다).
+    assert RuntimeSettings(render_bg_color="#ABCDEF").render_bg_color == "#abcdef"
+
+
+def test_bg_color_case_does_not_create_a_phantom_override(env_default):
+    """대문자 .env + 색상 피커(항상 소문자)가 "위장 오버라이드"를 만들면 안 된다.
+
+    정규화가 없으면 "#0f172a != #0F172A"라 같은 색인데도 기본값과 다르다고 판정돼
+    DB 행이 생기고, 그 뒤로 이 키는 .env 변경에 영원히 반응하지 않는다 —
+    delete-on-default가 막으려던 바로 그 실패다.
+    """
+    env_default(RENDER_BG_COLOR="#0F172A")
+
+    default = RuntimeSettings().render_bg_color
+    picked = RuntimeSettings(render_bg_color="#0f172a").render_bg_color
+    assert default == picked
 
 
 def test_unknown_provider_is_rejected():
@@ -101,25 +116,25 @@ def test_stock_sources_rejects_empty_and_duplicates():
         RuntimeSettings(stock_sources=["pexels", "pexels"])
 
 
-def test_out_of_range_env_default_is_rejected(bad_env):
+def test_out_of_range_env_default_is_rejected(env_default):
     """범위 밖 .env가 조용히 유효값이 되면 안 된다.
 
     이 단언이 없으면 validate_default=True를 지워도 스위트가 통과한다 — 그 상태에서는
     PASSWORD_MIN_LEN=4가 실효 하한이 되고(하한 8 약속이 .env 경로에서 깨진다),
     GET이 내려준 검증 안 된 값을 화면이 그대로 PUT해 아무 설정도 저장할 수 없게 된다.
     """
-    bad_env(PASSWORD_MIN_LEN="4")
+    env_default(PASSWORD_MIN_LEN="4")
     with pytest.raises(ValidationError):
         RuntimeSettings()
 
 
-def test_check_env_defaults_names_the_offending_keys(bad_env):
+def test_check_env_defaults_names_the_offending_keys(env_default):
     """기동 실패 메시지는 고쳐야 할 .env 키와 허용 범위를 담아야 한다.
 
     ge·le만 검증하는 테스트가 따로 없던 failed_login_limit·stock_max_bytes·
     stock_timeout_sec 세 항목을 여기서 함께 덮는다(제약을 지우면 이 테스트가 깨진다).
     """
-    bad_env(STOCK_TIMEOUT_SEC="600", FAILED_LOGIN_LIMIT="0", STOCK_MAX_BYTES="1024")
+    env_default(STOCK_TIMEOUT_SEC="600", FAILED_LOGIN_LIMIT="0", STOCK_MAX_BYTES="1024")
 
     with pytest.raises(EnvSettingsError) as exc_info:
         check_env_defaults()

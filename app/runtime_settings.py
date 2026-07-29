@@ -85,6 +85,16 @@ class RuntimeSettings(BaseModel):
             raise ValueError(f"알 수 없는 provider입니다: {value} (가능: {', '.join(allowed)})")
         return value
 
+    @field_validator("render_bg_color")
+    @classmethod
+    def _normalize_hex_color(cls, value: str) -> str:
+        # 패턴이 대문자 hex도 받는데, delete-on-default 판정은 문자열 동등 비교다.
+        # .env가 #0F172A인 배포에서 관리자가 색상 피커로 같은 색을 고르면(HTML color
+        # 입력은 항상 소문자를 낸다) "#0f172a != #0F172A"라 기본값과 다르다고 판정돼
+        # 행이 생기고, 그 뒤로 이 키는 .env 변경에 영원히 반응하지 않는다. 양쪽을
+        # 소문자로 맞춰 같은 색이 항상 같은 문자열이 되게 한다.
+        return value.lower()
+
     @field_validator("whisper_model")
     @classmethod
     def _known_whisper_model(cls, value: str) -> str:
