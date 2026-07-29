@@ -55,13 +55,28 @@ function NumberInput({
   value: number
   onChange: (v: number) => void
 }) {
+  // 지우고 다시 타이핑하는 중간에는 빈 문자열이 되는데, 그 상태를 곧바로 0으로 스냅해
+  // draft에 반영하면 사용자가 지운 걸 알아채지 못한 채 0이 저장될 수 있다. 그래서
+  // 표시 문자열은 컴포넌트가 따로 들고 있고, 유효한 숫자일 때만 상위 draft로 올린다.
+  const [text, setText] = useState(String(value))
+
+  // 바깥 값이 바뀌면(되돌리기·기본값으로·저장 응답 반영 등) 표시도 맞춘다.
+  useEffect(() => {
+    setText(String(value))
+  }, [value])
+
   return (
     <input
       type="number"
       className={inputClass}
-      value={value}
-      // 빈 문자열은 NaN이 되어 서버 422를 부르므로 0으로 눌러둔다 — 범위 검증이 잡는다.
-      onChange={(e) => onChange(Number(e.target.value) || 0)}
+      value={text}
+      onChange={(e) => {
+        const raw = e.target.value
+        setText(raw)
+        if (raw.trim() === '') return // 빈 상태를 그대로 유지하고 draft는 건드리지 않는다.
+        const n = Number(raw)
+        if (!Number.isNaN(n)) onChange(n)
+      }}
     />
   )
 }
@@ -227,7 +242,7 @@ export function AdminSystem() {
 
         <SettingRow
           label={<>렌더 폰트{badge('render_font')}</>}
-          description="자막에 쓰는 글꼴 이름입니다. 서버에 설치된 글꼴이어야 합니다."
+          description="자막에 쓰는 글꼴 이름입니다. 서버에 설치된 글꼴이어야 합니다. 다음 실행부터 적용됩니다."
         >
           <input
             className={inputClass}
@@ -248,7 +263,7 @@ export function AdminSystem() {
 
         <SettingRow
           label={<>스톡 소스 우선순위{badge('stock_sources')}</>}
-          description="배경 소재를 찾을 순서입니다. 앞의 소스에서 못 찾으면 다음으로 넘어갑니다."
+          description="배경 소재를 찾을 순서입니다. 앞의 소스에서 못 찾으면 다음으로 넘어갑니다. 다음 실행부터 적용됩니다."
         >
           <select
             className={selectClass}
@@ -265,7 +280,7 @@ export function AdminSystem() {
 
         <SettingRow
           label={<>씬당 다운로드 상한{badge('stock_max_bytes')}</>}
-          description="배경 소재 하나의 최대 크기(MB)입니다 (1~500)."
+          description="배경 소재 하나의 최대 크기(MB)입니다 (1~500). 다음 실행부터 적용됩니다."
         >
           <NumberInput
             value={Math.round(draft.stock_max_bytes / MB)}
@@ -275,7 +290,7 @@ export function AdminSystem() {
 
         <SettingRow
           label={<>스톡 타임아웃{badge('stock_timeout_sec')}</>}
-          description="소재를 내려받을 때 기다리는 최대 시간(초)입니다 (5~300)."
+          description="소재를 내려받을 때 기다리는 최대 시간(초)입니다 (5~300). 다음 실행부터 적용됩니다."
         >
           <NumberInput
             value={draft.stock_timeout_sec}
@@ -326,6 +341,7 @@ export function AdminSystem() {
           onClick={() => {
             setDraft(snapshot.settings)
             setSaved(false)
+            setError(null)
           }}
           disabled={!dirty || saving}
           className="rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-fg-body hover:bg-surface-muted disabled:opacity-50"
