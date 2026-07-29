@@ -1,4 +1,5 @@
 import { api } from './api'
+import type { FaqCategory } from './faqs'
 import type { Yn } from './notices'
 import type { ProjectStatus } from './projects'
 
@@ -75,6 +76,36 @@ export const adminNotices = {
   update: (id: number, payload: NoticePayload) =>
     api.patch<{ id: number }>(`/admin/notices/${id}`, payload),
   remove: (id: number) => api.del<{ id: number; deleted_at: string }>(`/admin/notices/${id}`),
+}
+
+// 관리자 FAQ 목록의 한 행. 작성자 이름이 조인돼 함께 온다(작성자 계정이
+// 지워졌거나 created_by가 비면 null).
+export type AdminFaq = {
+  id: number
+  question: string
+  answer: string
+  category: FaqCategory
+  status: 'DRAFT' | 'PUBLISHED'
+  sort_order: number
+  created_at: string
+  created_by_name: string | null
+}
+
+// 생성·수정이 같은 본문을 쓴다 — 관리자 모달이 항상 편집 가능한 전체를 보낸다.
+export type FaqPayload = {
+  question: string
+  answer: string
+  category: FaqCategory
+  status: AdminFaq['status']
+  sort_order: number
+}
+
+export const adminFaqs = {
+  list: () => api.get<AdminFaq[]>('/admin/faqs'),
+  create: (payload: FaqPayload) => api.post<{ id: number }>('/admin/faqs', payload),
+  update: (id: number, payload: FaqPayload) =>
+    api.patch<{ id: number }>(`/admin/faqs/${id}`, payload),
+  remove: (id: number) => api.del<{ id: number; deleted_at: string }>(`/admin/faqs/${id}`),
 }
 
 export type NoticePhase = 'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'ENDED'
