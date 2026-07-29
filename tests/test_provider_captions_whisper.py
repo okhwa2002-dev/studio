@@ -192,3 +192,31 @@ def test_transcribe_drains_lazy_generator_fully(monkeypatch):
 
     assert drained == [True]
     assert [w["w"] for w in words] == ["a", "b", "c"]
+
+
+@pytest.mark.asyncio
+async def test_model_size_comes_from_ctx_settings(monkeypatch, tmp_path):
+    """Whisper 모델이 .env가 아니라 ctx.settings에서 온다."""
+    from app.providers.base import StageContext
+    from app.providers.captions.whisper import WhisperCaptions
+    from app.utils import storage
+
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    seen: list[str] = []
+
+    def _transcribe(path, model_size, on_progress):
+        seen.append(model_size)
+        return [], "ko", 1.0
+
+    ctx = StageContext(
+        topic="t",
+        input_assets={
+            "voice": [{"kind": "AUDIO", "path": "projects/9/voice/voice.mp3", "meta": {}}]
+        },
+        workdir="projects/9/captions",
+        settings={"whisper_model": "medium"},
+    )
+    storage.write_bytes("projects/9/voice/voice.mp3", b"mp3")
+    await WhisperCaptions(transcribe=_transcribe).run(ctx)
+
+    assert seen == ["medium"]

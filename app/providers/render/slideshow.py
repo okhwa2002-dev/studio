@@ -1,7 +1,7 @@
-from app.config import get_settings
 from app.constants import AssetKind
 from app.providers.base import Provider, StageContext, StageResult
 from app.providers.render.input import input_audio_path, input_srt_path
+from app.runtime_settings import stage_setting
 from app.utils import ffmpeg, storage
 
 _FILENAME = "render.mp4"
@@ -25,21 +25,20 @@ class SlideshowRender(Provider):
         return self._exe
 
     async def run(self, ctx: StageContext) -> StageResult:
-        settings = get_settings()
         audio_abs = str(storage.resolve(input_audio_path(ctx)))
         srt_rel = input_srt_path(ctx)
         out_rel = f"{ctx.workdir}/{_FILENAME}"
 
         cmd = ffmpeg.build_slideshow_cmd(
             exe=self._exe_path(),
-            bg_color=settings.render_bg_color,
+            bg_color=stage_setting(ctx.settings, "render_bg_color"),
             audio_abs=audio_abs,
             srt_rel=srt_rel,
             out_rel=out_rel,
             width=_WIDTH,
             height=_HEIGHT,
-            font=settings.render_font,
-            font_size=settings.render_font_size,
+            font=stage_setting(ctx.settings, "render_font"),
+            font_size=stage_setting(ctx.settings, "render_font_size"),
         )
         out_abs = storage.resolve(out_rel)
         out_abs.parent.mkdir(parents=True, exist_ok=True)

@@ -16,14 +16,17 @@ _FACTORIES = {
 }
 
 
-def enabled_sources() -> list:
-    """STOCK_SOURCES 순서대로, API 키가 실제로 있는 소스만 만든다.
+def enabled_sources(stock_sources: list[str] | None = None) -> list:
+    """주어진 순서대로, API 키가 실제로 있는 소스만 만든다.
 
+    순서는 런타임 설정에서 오고 API 키는 .env에서 온다 — 비밀값은 DB로 옮기지 않는다.
+    인자가 없으면 .env의 STOCK_SOURCES를 쓴다(단위 테스트·직접 호출용).
     키가 하나만 있어도 그 소스로 동작한다. 하나도 없을 때만 실패한다.
     """
     settings = get_settings()
+    names = stock_sources if stock_sources is not None else settings.stock_sources
     sources = []
-    for name in settings.stock_sources:
+    for name in names:
         entry = _FACTORIES.get(name)
         if entry is None:
             logger.warning("알 수 없는 STOCK_SOURCES 항목이라 건너뜁니다: %s", name)
