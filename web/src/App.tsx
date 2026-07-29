@@ -1,12 +1,14 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './layouts/AppLayout'
 import { AuthProvider, useAuth } from './lib/auth'
+import { AdminFaqs } from './pages/admin/AdminFaqs'
 import { AdminNotices } from './pages/admin/AdminNotices'
 import { AdminProjects } from './pages/admin/AdminProjects'
 import { AdminSystem } from './pages/admin/AdminSystem'
 import { AdminUsers } from './pages/admin/AdminUsers'
 import { Approvals } from './pages/admin/Approvals'
 import { Dashboard } from './pages/Dashboard'
+import { Faqs } from './pages/faqs/Faqs'
 import { Login } from './pages/Login'
 import { Notices } from './pages/notices/Notices'
 import { PendingApproval } from './pages/PendingApproval'
@@ -44,6 +46,7 @@ function Routing() {
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/notices" element={<Notices />} />
+          <Route path="/faqs" element={<Faqs />} />
           <Route path="/settings" element={<Settings />} />
           <Route element={<RequireAdmin />}>
             <Route path="/admin/approvals" element={<Approvals />} />
@@ -51,6 +54,7 @@ function Routing() {
             <Route path="/admin/projects" element={<AdminProjects />} />
             <Route path="/admin/projects/:id" element={<ProjectDetail readOnly />} />
             <Route path="/admin/notices" element={<AdminNotices />} />
+            <Route path="/admin/faqs" element={<AdminFaqs />} />
             <Route path="/admin/system" element={<AdminSystem />} />
           </Route>
         </Route>
