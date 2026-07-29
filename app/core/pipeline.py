@@ -1,11 +1,11 @@
 import json
 import logging
 
-from app.config import get_settings
 from app.constants import ProjectStatus, StageStatus
 from app.db import raw_connection
 from app.providers.base import StageContext, get_provider, noop_progress
 from app.queries import queries
+from app.runtime_settings import get_runtime_settings
 from app.utils import storage
 from app.utils.errors import AppError
 from app.utils.time import now_local
@@ -111,9 +111,13 @@ async def run_claimed_stage(
     conn = await raw_connection(session)
     started = stage["started_at"]
     inputs, input_assets = await _previous_context(conn, project["id"], stage["name"])
+    # provider는 DB 커넥션이 없다. 런타임 설정을 여기서 읽어 ctx에 실어 보낸다.
+    # 프로젝트 자체 설정(auto_run 등)이 뒤에 와서 이긴다 — 개별 프로젝트가
+    # 전역 기본값을 덮어쓰는 방향이 자연스럽다.
+    runtime = await get_runtime_settings(conn)
     ctx = StageContext(
         topic=project["topic"],
-        settings=project.get("settings", {}),
+        settings={**runtime.model_dump(), **project.get("settings", {})},
         inputs=inputs,
         input_assets=input_assets,
         attempt=stage["attempt"],
@@ -149,9 +153,10 @@ def next_stage(name: str) -> str | None:
     return STAGE_ORDER[idx + 1] if idx + 1 < len(STAGE_ORDER) else None
 
 
-def _next_provider(name: str) -> str:
-    """단계별 기본 provider는 설정에서 온다. 설정이 없으면 fake."""
-    return getattr(get_settings(), f"{name}_provider", "fake")
+async def _next_provider(conn, name: str) -> str:
+    """단계별 기본 provider는 런타임 설정에서 온다. 설정에 없으면 fake."""
+    runtime = await get_runtime_settings(conn)
+    return getattr(runtime, f"{name}_provider", "fake")
 
 
 async def approve_stage(session, project: dict, stage: dict, actor_id: int) -> None:
@@ -186,7 +191,7 @@ async def approve_stage(session, project: dict, stage: dict, actor_id: int) -> N
         # 재승인 자체가 API로는 이 지점에 도달하지 못한다 — 방어적 검사로, 훗날 APPROVED 재진입을 허용할 때를 대비해 남겨둔다.
         if await queries.find_stage(conn, project_id=project["id"], name=nxt) is None:
             await queries.insert_stage(
-                conn, project_id=project["id"], name=nxt, provider=_next_provider(nxt),
+                conn, project_id=project["id"], name=nxt, provider=await _next_provider(conn, nxt),
                 status=StageStatus.PENDING, output=json.dumps({}), error=None, attempt=0,
                 started_at=None, finished_at=None,
                 created_at=now, updated_at=now, created_by=actor_id, updated_by=actor_id,

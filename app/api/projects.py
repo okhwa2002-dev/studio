@@ -7,12 +7,12 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
-from app.config import get_settings
 from app.constants import AssetKind, ProjectStatus, StageName, StageStatus, UserRole
 from app.core import events, pipeline, views
 from app.core.worker import get_worker
 from app.db import get_db, raw_connection
 from app.queries import queries
+from app.runtime_settings import get_runtime_settings
 from app.utils import storage
 from app.utils.errors import AppError, Errors
 from app.utils.time import now_local
@@ -72,8 +72,9 @@ async def create_project(
         settings=json.dumps({"auto_run": body.auto_run}),
         created_at=now, updated_at=now, created_by=user["id"], updated_by=user["id"],
     )
+    runtime = await get_runtime_settings(conn)
     stage_id = await queries.insert_stage(
-        conn, project_id=project_id, name=StageName.SCRIPT, provider=get_settings().script_provider,
+        conn, project_id=project_id, name=StageName.SCRIPT, provider=runtime.script_provider,
         status=StageStatus.PENDING, output=json.dumps({}), error=None, attempt=0,
         started_at=None, finished_at=None,
         created_at=now, updated_at=now, created_by=user["id"], updated_by=user["id"],

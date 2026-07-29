@@ -1,6 +1,12 @@
+import json
+
 from app.auth.security import hash_password
 from app.constants import ProjectStatus, StageStatus, UserRole, UserStatus
+from app.db import raw_connection
 from app.models.user import User
+from app.queries import queries
+from app.runtime_settings import invalidate_runtime_settings
+from app.utils.time import now_local
 
 
 async def _login(client, db_session, email: str) -> User:
@@ -157,12 +163,15 @@ async def test_create_uses_configured_provider(client, db_session):
     assert body["stages"][0]["provider"] == "fake"
 
 
-async def test_create_uses_openai_when_configured(client, db_session, monkeypatch):
+async def test_create_uses_openai_when_configured(client, db_session):
     # 설정이 openai면 생성된 단계 provider도 openai (create는 실행을 안 하므로 network 없음)
-    monkeypatch.setattr(
-        "app.api.projects.get_settings",
-        lambda: __import__("types").SimpleNamespace(script_provider="openai"),
+    # script provider는 이제 .env가 아니라 런타임 설정(system_settings)에서 온다.
+    conn = await raw_connection(db_session)
+    await queries.upsert_setting(
+        conn, key="script_provider", value=json.dumps("openai"), now=now_local(), actor_id=None
     )
+    invalidate_runtime_settings()
+
     await _login(client, db_session, "provider-openai@example.com")
     body = (await client.post("/api/projects", json={"title": "t", "topic": "주제"})).json()
     assert body["stages"][0]["provider"] == "openai"
