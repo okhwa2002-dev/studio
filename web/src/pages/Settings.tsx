@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { FormError } from '../components/FormError'
 import { Modal } from '../components/Modal'
+import { SettingRow } from '../components/SettingRow'
 import { TextField } from '../components/TextField'
 import { account } from '../lib/account'
 import { ApiError } from '../lib/api'
@@ -8,27 +9,6 @@ import { setThemePref, useThemePref, type ThemePref } from '../lib/theme'
 
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 const PASSWORD_MIN_LEN = 8
-
-// 설정 항목 한 줄: 왼쪽에 라벨·설명, 오른쪽에 조작 요소. 항목이 늘면 이 줄을 더 쌓으면 된다.
-function SettingRow({
-  label,
-  description,
-  children,
-}: {
-  label: string
-  description: string
-  children: ReactNode
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 py-4">
-      <div>
-        <div className="text-sm font-medium text-fg">{label}</div>
-        <div className="mt-0.5 text-xs text-fg-muted">{description}</div>
-      </div>
-      {children}
-    </div>
-  )
-}
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'system', label: '시스템' },
