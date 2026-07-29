@@ -1,9 +1,11 @@
 import json
 import logging
+import time
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from app.config import get_settings
+from app.queries import queries
 
 logger = logging.getLogger(__name__)
 
@@ -124,3 +126,42 @@ def stage_setting(settings: dict, key: str):
     if key in settings:
         return settings[key]
     return getattr(RuntimeSettings(), key)
+
+
+# 캐시를 TTL과 명시적 무효화 둘 다로 관리한다. 무효화만 두면 다중 프로세스 배포에서
+# 다른 프로세스에 변경이 영원히 닿지 않고, TTL만 두면 관리자가 저장 직후 화면에서
+# 이전 값을 본다. 같이 두면 같은 프로세스는 즉시, 다른 프로세스는 최대 30초에 수렴한다.
+_TTL_SEC = 30.0
+_cache: RuntimeSettings | None = None
+_cached_at: float = 0.0
+
+
+async def get_runtime_settings(conn) -> RuntimeSettings:
+    """현재 유효한 런타임 설정. conn은 raw_connection()이 준 asyncpg 커넥션이다."""
+    global _cache, _cached_at
+
+    now = time.monotonic()
+    if _cache is not None and now - _cached_at < _TTL_SEC:
+        return _cache
+
+    try:
+        # select_all_settings는 suffix 없는 "여러 행" 쿼리라 asyncpg 드라이버에서
+        # 비동기 제너레이터로 온다 — await가 아니라 async for로 소비한다
+        # (app/api/admin_notices.py의 list_notices_for_admin과 같은 패턴).
+        rows = [row async for row in queries.select_all_settings(conn)]
+    except Exception:
+        # DB 장애 시 조용히 .env 기본값으로 진행한다. 캐시에는 남기지 않는다 —
+        # 다음 호출이 다시 시도한다.
+        logger.warning("시스템 설정 조회에 실패해 기본값으로 진행합니다.", exc_info=True)
+        return RuntimeSettings()
+
+    _cache = RuntimeSettings.from_overrides({row["key"]: row["value"] for row in rows})
+    _cached_at = now
+    return _cache
+
+
+def invalidate_runtime_settings() -> None:
+    """설정 저장 직후 호출한다. 같은 프로세스는 다음 조회에서 곧바로 새 값을 본다."""
+    global _cache, _cached_at
+    _cache = None
+    _cached_at = 0.0

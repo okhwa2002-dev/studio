@@ -91,3 +91,14 @@ def reset_events():
     yield
     events.reset()
     worker.reset()
+
+
+@pytest.fixture(autouse=True)
+def reset_runtime_settings():
+    # 런타임 설정 캐시도 프로세스 전역이다. 앞 테스트가 넣은 오버라이드가
+    # 롤백된 뒤에도 캐시에 남아 다음 테스트를 오염시키는 것을 막는다.
+    from app.runtime_settings import invalidate_runtime_settings
+
+    invalidate_runtime_settings()
+    yield
+    invalidate_runtime_settings()
