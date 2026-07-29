@@ -65,3 +65,24 @@ class NoticeStatus(StrEnum):
 
     DRAFT = "DRAFT"
     PUBLISHED = "PUBLISHED"
+
+
+class FaqCategory(StrEnum):
+    """faqs.category 코드값. DB에 대문자로 저장된다."""
+
+    ACCOUNT = "ACCOUNT"  # 계정
+    PROJECT = "PROJECT"  # 프로젝트
+    PRODUCTION = "PRODUCTION"  # 영상제작
+    ETC = "ETC"  # 기타
+
+
+class FaqStatus(StrEnum):
+    """faqs.status 코드값. DB에 대문자로 저장된다.
+
+    NoticeStatus와 값이 같지만 공유하지 않는다 — UserStatus·ProjectStatus·StageStatus가
+    각자 자기 열거형을 갖는 규칙을 따르고, 한쪽에 상태를 추가할 때 다른 도메인이
+    딸려 오지 않게 한다.
+    """
+
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"

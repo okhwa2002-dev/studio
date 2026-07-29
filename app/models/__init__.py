@@ -1,5 +1,6 @@
 from app.models.asset import Asset
 from app.models.base import BaseEntity
+from app.models.faq import Faq
 from app.models.notice import Notice
 from app.models.notice_read import NoticeRead
 from app.models.project import Project
@@ -11,6 +12,7 @@ from app.models.user import User
 __all__ = [
     "Asset",
     "BaseEntity",
+    "Faq",
     "Notice",
     "NoticeRead",
     "Project",
