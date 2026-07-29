@@ -43,6 +43,18 @@ class RegisterRequest(BaseModel):
     name: str
 
 
+@router.get("/policy")
+async def policy(db: AsyncSession = Depends(get_db)):
+    """회원가입·비밀번호 변경 화면이 쓰는 공개 정책값.
+
+    회원가입은 로그인 전 화면이라 /auth/me로는 전달할 수 없고, 일반 사용자에게
+    관리자 설정 API를 열 수도 없다. 최소 길이는 가입을 시도하면 어차피 드러나는
+    값이라 공개해도 잃을 것이 없다.
+    """
+    conn = await raw_connection(db)
+    return {"password_min_len": (await get_runtime_settings(conn)).password_min_len}
+
+
 @router.post("/register", status_code=201)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     email = body.email.strip().lower()
@@ -51,6 +63,13 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if not name or len(name) > _NAME_MAX_LEN:
         raise AppError(400, "INVALID_NAME", "이름은 1~50자로 입력해 주세요.")
     conn = await raw_connection(db)
+
+    # 비밀번호 변경과 같은 규칙·같은 에러 코드를 쓴다. 가입 경로에만 검증이 없어서
+    # 1자 비밀번호로도 계정이 만들어지던 구멍을 막는다.
+    min_len = (await get_runtime_settings(conn)).password_min_len
+    if len(body.password) < min_len:
+        raise AppError(400, "WEAK_PASSWORD", f"비밀번호는 {min_len}자 이상이어야 합니다.")
+
     existing = await queries.find_by_email(conn, email=email)
     if existing is not None:
         raise Errors.conflict("이미 등록된 이메일입니다.")
