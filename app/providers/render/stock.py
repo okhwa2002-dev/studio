@@ -39,8 +39,10 @@ class StockRender(Provider):
         self._download = downloader or download
 
     def validate(self, settings: dict) -> None:
-        # 키가 하나도 없으면 여기서 STOCK_API_KEY_MISSING → 실행 전 조기 실패
-        enabled_sources(settings.get("stock_sources"))
+        # 키가 하나도 없으면 여기서 STOCK_API_KEY_MISSING → 실행 전 조기 실패.
+        # 폴백은 run()과 같은 stage_setting으로 통일한다 — 한 개념에 관용구가 둘이면
+        # 어느 쪽 기본값이 쓰이는지 읽는 사람이 매번 따져봐야 한다.
+        enabled_sources(stage_setting(settings, "stock_sources"))
 
     def _exe_path(self) -> str:
         if self._exe is None:

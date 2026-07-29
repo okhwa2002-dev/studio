@@ -17,11 +17,13 @@ export type RuntimeSettings = {
   signup_auto_approve: boolean
 }
 
-// 화면이 "변경됨" 배지와 [기본값으로] 링크를 그리려면 셋 다 필요하다.
+// 화면은 settings(현재 유효값)와 defaults(.env 기본값) 둘만 쓴다.
+// 서버는 overridden(변경된 키 목록)도 함께 내려주지만 여기 타입에는 두지 않는다 —
+// "변경됨" 배지는 저장 전 draft 기준이어야 하므로 화면이 draft vs defaults로 직접
+// 계산한다. 서버가 준 목록은 마지막 저장 시점의 스냅샷이라 편집 중에는 맞지 않는다.
 export type SettingsSnapshot = {
   settings: RuntimeSettings
   defaults: RuntimeSettings
-  overridden: string[]
 }
 
 export const systemSettings = {

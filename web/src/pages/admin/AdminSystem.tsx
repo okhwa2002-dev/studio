@@ -16,6 +16,10 @@ const VOICE_PROVIDERS = ['fake', 'edge_tts']
 const CAPTIONS_PROVIDERS = ['fake', 'whisper']
 const RENDER_PROVIDERS = ['fake', 'slideshow', 'stock']
 const WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v3']
+// fake는 실제 호출 없이 더미 결과를 내는 개발용 provider다. 운영 화면에서 무심코
+// 고르면 이후 모든 신규 프로젝트가 조용히 더미 결과를 내므로 라벨로 분명히 구분한다.
+// 저장되는 값은 그대로 'fake'다 — 표시만 바꾼다.
+const providerLabel = (value: string) => (value === 'fake' ? 'fake (테스트용)' : value)
 const STOCK_ORDERS: { value: string[]; label: string }[] = [
   { value: ['pexels', 'pixabay'], label: 'Pexels 먼저' },
   { value: ['pixabay', 'pexels'], label: 'Pixabay 먼저' },
@@ -32,16 +36,18 @@ function Select({
   value,
   options,
   onChange,
+  label = (v: string) => v,
 }: {
   value: string
   options: string[]
   onChange: (v: string) => void
+  label?: (v: string) => string
 }) {
   return (
     <select className={selectClass} value={value} onChange={(e) => onChange(e.target.value)}>
       {options.map((o) => (
         <option key={o} value={o}>
-          {o}
+          {label(o)}
         </option>
       ))}
     </select>
@@ -173,6 +179,7 @@ export function AdminSystem() {
           <Select
             value={draft.script_provider}
             options={SCRIPT_PROVIDERS}
+            label={providerLabel}
             onChange={(v) => set('script_provider', v)}
           />
         </SettingRow>
@@ -184,6 +191,7 @@ export function AdminSystem() {
           <Select
             value={draft.voice_provider}
             options={VOICE_PROVIDERS}
+            label={providerLabel}
             onChange={(v) => set('voice_provider', v)}
           />
         </SettingRow>
@@ -195,6 +203,7 @@ export function AdminSystem() {
           <Select
             value={draft.captions_provider}
             options={CAPTIONS_PROVIDERS}
+            label={providerLabel}
             onChange={(v) => set('captions_provider', v)}
           />
         </SettingRow>
@@ -206,6 +215,7 @@ export function AdminSystem() {
           <Select
             value={draft.render_provider}
             options={RENDER_PROVIDERS}
+            label={providerLabel}
             onChange={(v) => set('render_provider', v)}
           />
         </SettingRow>

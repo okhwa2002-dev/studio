@@ -19,8 +19,11 @@ router = APIRouter(prefix="/admin/system", tags=["admin"])
 async def _snapshot(conn) -> dict:
     """화면이 필요로 하는 세 가지를 한 번에 준다.
 
-    settings는 현재 유효값, defaults는 .env 기본값, overridden은 DB 행이 있는 키다.
-    셋 다 있어야 화면이 "변경됨" 배지와 [기본값으로] 링크를 그릴 수 있다.
+    settings는 현재 유효값, defaults는 .env 기본값, overridden은 그 둘이 다른 키다
+    (DB 행 존재 여부가 아니라 값 비교다 — delete-on-default 덕에 두 정의가 일치하지만,
+    행이 남아도 값이 같으면 "변경됨"으로 보이지 않는 쪽이 더 견고하다).
+    화면은 settings·defaults로 "변경됨" 배지와 [기본값으로] 링크를 직접 계산하고,
+    overridden은 API 응답의 요약값으로만 쓴다.
     """
     current = await get_runtime_settings(conn)
     defaults = RuntimeSettings().model_dump()
