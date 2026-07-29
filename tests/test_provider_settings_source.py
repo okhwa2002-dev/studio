@@ -1,6 +1,5 @@
 import pytest
 
-from app.providers.base import StageContext
 from app.providers.render.sources import enabled_sources
 from app.utils.errors import AppError
 
@@ -35,14 +34,9 @@ def test_enabled_sources_still_requires_at_least_one_api_key(monkeypatch):
         enabled_sources(["pexels", "pixabay"])
     assert exc.value.code == "STOCK_API_KEY_MISSING"
 
-
-def test_stock_max_bytes_and_timeout_come_from_ctx_settings():
-    from app.runtime_settings import stage_setting
-
-    ctx = StageContext(
-        topic="주제",
-        settings={"stock_max_bytes": 1_048_576, "stock_timeout_sec": 7},
-        workdir="projects/1/render",
-    )
-    assert stage_setting(ctx.settings, "stock_max_bytes") == 1_048_576
-    assert stage_setting(ctx.settings, "stock_timeout_sec") == 7
+# stock_max_bytes/stock_timeout_sec가 ctx.settings에서 오는지는 stage_setting을 직접
+# 부르는 것만으로는 이 task의 실제 산출물(StockRender가 그 값을 다운로드 호출까지
+# 전달하는지)을 증명하지 못한다 — Task 2에서 이미 검증한 stage_setting 자체의 재검증일
+# 뿐이다. 그래서 여기 있던 test_stock_max_bytes_and_timeout_come_from_ctx_settings는 지우고
+# tests/test_provider_render_stock.py에 StockRender.run()을 실제로 통과하는 테스트로 옮겼다
+# (test_run_downloads_use_max_bytes_and_timeout_from_ctx_settings).
