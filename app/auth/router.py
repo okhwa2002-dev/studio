@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.constants import UserRole, UserStatus
 from app.db import get_db, raw_connection
 from app.queries import queries
+from app.runtime_settings import get_runtime_settings
 from app.utils.errors import AppError, Errors
 from app.utils.time import now_local
 
@@ -117,7 +118,7 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
         new_count = row["failed_login_count"] + 1
         if row["locked_at"] is not None:
             new_locked_at = row["locked_at"]
-        elif new_count >= get_settings().failed_login_limit:
+        elif new_count >= (await get_runtime_settings(conn)).failed_login_limit:
             new_locked_at = now
         else:
             new_locked_at = None
@@ -218,9 +219,6 @@ async def me(user: dict = Depends(current_user)):
     return {"id": user["id"], "email": user["email"], "role": user["role"], "name": user["name"]}
 
 
-_PASSWORD_MIN_LEN = 8
-
-
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
@@ -238,8 +236,9 @@ async def change_password(
     row = await queries.find_by_id(conn, id=user["id"])
     if row is None or not verify_password(body.current_password, row["password_hash"]):
         raise AppError(400, "INVALID_PASSWORD", "현재 비밀번호가 올바르지 않습니다.")
-    if len(body.new_password) < _PASSWORD_MIN_LEN:
-        raise AppError(400, "WEAK_PASSWORD", f"새 비밀번호는 {_PASSWORD_MIN_LEN}자 이상이어야 합니다.")
+    min_len = (await get_runtime_settings(conn)).password_min_len
+    if len(body.new_password) < min_len:
+        raise AppError(400, "WEAK_PASSWORD", f"새 비밀번호는 {min_len}자 이상이어야 합니다.")
     if verify_password(body.new_password, row["password_hash"]):
         raise AppError(400, "SAME_PASSWORD", "새 비밀번호가 현재 비밀번호와 같습니다.")
 
