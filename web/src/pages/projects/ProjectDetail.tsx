@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { FormError } from '../../components/FormError'
 import { ApiError } from '../../lib/api'
+import { useToast } from '../../lib/toast'
 import { subscribeProject, type StageProgress } from '../../lib/events'
-import { hasCaptions, hasRender, hasScript, hasVoice, projects, STAGE_BADGE, STAGE_LABEL, type ProjectDetail as Detail, type Stage } from '../../lib/projects'
+import { hasCaptions, hasRender, hasScript, hasVoice, projects, STAGE_BADGE, STAGE_LABEL, type ProjectDetail as Detail, type ScriptEditPayload, type Stage } from '../../lib/projects'
+import { ScriptEditor } from './ScriptEditor'
 
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
@@ -195,6 +198,7 @@ function StageCard({
   acting,
   act,
   readOnly,
+  onDetail,
 }: {
   projectId: number
   stage: Stage
@@ -203,7 +207,30 @@ function StageCard({
   acting: boolean
   act: (fn: () => Promise<Detail>) => Promise<void>
   readOnly: boolean
+  onDetail: (detail: Detail) => void
 }) {
+  // 대본 편집 상태는 이 카드가 들고 있다. act()를 쓰지 않는 이유: act는 실패를 페이지
+  // 상단의 error로 올리는데, 저장 실패 시에는 편집기를 닫지 않고 그 안에 보여줘야 한다
+  // (작성 중인 내용을 날리면 안 된다).
+  const [editing, setEditing] = useState(false)
+  const [savingScript, setSavingScript] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const saveScript = async (payload: ScriptEditPayload) => {
+    setSavingScript(true)
+    setSaveError(null)
+    try {
+      onDetail(await projects.saveScript(projectId, payload))
+      setEditing(false)
+    } catch (e) {
+      setSaveError(e instanceof ApiError ? e.message : UNKNOWN)
+    } finally {
+      setSavingScript(false)
+    }
+  }
+
+  const editable = !readOnly && stage.name === 'script' && stage.status === 'NEEDS_REVIEW'
+
   return (
     <div className="mt-4 rounded-lg border border-line p-4">
       <div className="flex items-center justify-between">
@@ -211,9 +238,23 @@ function StageCard({
           <span className="font-medium text-fg">{stageTitle(stage.name)}</span>
           <StageBadge status={stage.status} />
         </div>
-        {/* 읽기 전용(관리자 열람)에서는 실행·승인·재생성 버튼을 아예 그리지 않는다. */}
+        {/* 읽기 전용(관리자 열람)에서는 실행·승인·재생성 버튼을 아예 그리지 않는다.
+            편집 중에도 숨긴다 — 그대로 두면 [승인]이 수정 전 대본을 승인해 작성 중인
+            내용을 조용히 버린다. */}
         <div className="flex gap-2">
-          {!readOnly && (stage.status === 'PENDING' || stage.status === 'FAILED') && (
+          {editable && !editing && (
+            <button
+              onClick={() => {
+                setSaveError(null)
+                setEditing(true)
+              }}
+              disabled={acting}
+              className="rounded-md border border-line-strong px-3 py-1 text-xs font-medium text-fg-body hover:bg-surface-muted disabled:opacity-50"
+            >
+              수정
+            </button>
+          )}
+          {!editing && !readOnly && (stage.status === 'PENDING' || stage.status === 'FAILED') && (
             <button
               onClick={() => act(() => projects.run(projectId, stage.name))}
               disabled={acting}
@@ -222,7 +263,7 @@ function StageCard({
               {acting ? '요청 중…' : '실행'}
             </button>
           )}
-          {!readOnly && stage.status === 'NEEDS_REVIEW' && (
+          {!editing && !readOnly && stage.status === 'NEEDS_REVIEW' && (
             <>
               <button
                 onClick={() => act(() => projects.approve(projectId, stage.name))}
@@ -250,13 +291,23 @@ function StageCard({
       {stage.status === 'FAILED' && stage.error && (
         <div className="mt-3 text-sm text-red-700 dark:text-red-400">오류: {stage.error}</div>
       )}
-      {(stage.status === 'NEEDS_REVIEW' || stage.status === 'APPROVED') && (
-        <>
-          <ScriptView stage={stage} />
-          <VoiceView projectId={projectId} stage={stage} />
-          <CaptionsView projectId={projectId} stage={stage} voiceAttempt={voiceAttempt} />
-          <RenderView projectId={projectId} stage={stage} />
-        </>
+      {editing && hasScript(stage.output) ? (
+        <ScriptEditor
+          initial={stage.output}
+          saving={savingScript}
+          error={saveError}
+          onSave={saveScript}
+          onCancel={() => setEditing(false)}
+        />
+      ) : (
+        (stage.status === 'NEEDS_REVIEW' || stage.status === 'APPROVED') && (
+          <>
+            <ScriptView stage={stage} />
+            <VoiceView projectId={projectId} stage={stage} />
+            <CaptionsView projectId={projectId} stage={stage} voiceAttempt={voiceAttempt} />
+            <RenderView projectId={projectId} stage={stage} />
+          </>
+        )
       )}
     </div>
   )
@@ -272,6 +323,11 @@ export function ProjectDetail({ readOnly = false }: { readOnly?: boolean }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [acting, setActing] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const navigate = useNavigate()
+  const toast = useToast()
 
   useEffect(() => {
     setLoading(true)
@@ -332,6 +388,21 @@ export function ProjectDetail({ readOnly = false }: { readOnly?: boolean }) {
     }
   }
 
+  const remove = async () => {
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await projects.remove(projectId)
+      toast.success('프로젝트를 삭제했습니다.')
+      // replace인 이유: 뒤로 가기로 방금 지운 상세에 돌아가면 404 화면이 뜬다.
+      navigate('/projects', { replace: true })
+    } catch (e) {
+      // 대화상자를 닫지 않는다 — 실행 중이라 거절된 경우(409) 사용자가 읽고 취소해야 한다.
+      setDeleteError(e instanceof ApiError ? e.message : UNKNOWN)
+      setDeleting(false)
+    }
+  }
+
   if (loading) return <div className="p-10 text-center text-sm text-fg-muted">불러오는 중…</div>
   if (!detail) return <FormError message={error ?? UNKNOWN} />
 
@@ -355,18 +426,45 @@ export function ProjectDetail({ readOnly = false }: { readOnly?: boolean }) {
             acting={acting}
             act={act}
             readOnly={readOnly}
+            onDetail={setDetail}
           />
         ))}
       </div>
 
-      <div className="mt-6">
+      <div className="mt-6 flex items-center justify-between">
         <Link
           to={readOnly ? '/admin/projects' : '/projects'}
           className="inline-block rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-fg-body hover:bg-surface-muted"
         >
           ← 목록으로
         </Link>
+        {/* 관리자 열람에서는 숨긴다 — 다른 액션 버튼과 같은 규칙이고, 서버도 삭제를
+            소유자로 제한하므로 관리자에게는 항상 실패할 버튼이 된다. */}
+        {!readOnly && (
+          <button
+            onClick={() => {
+              setDeleteError(null)
+              setConfirmingDelete(true)
+            }}
+            className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-500/10"
+          >
+            삭제
+          </button>
+        )}
       </div>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="프로젝트 삭제"
+          message={`「${detail.project.title}」을 삭제합니다. 대본·음성·자막·영상이 함께 사라지며 되돌릴 수 없습니다.`}
+          confirmLabel="삭제"
+          tone="danger"
+          busy={deleting}
+          error={deleteError}
+          onConfirm={remove}
+          onClose={() => setConfirmingDelete(false)}
+        />
+      )}
     </div>
   )
 }

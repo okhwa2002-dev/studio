@@ -24,6 +24,9 @@ def test_project_defaults():
     assert p.status == ProjectStatus.DRAFT
     assert p.current_stage == StageName.SCRIPT
     assert p.settings == {}
+    # 새로 만든 프로젝트는 삭제된 상태가 아니다.
+    assert p.deleted_at is None
+    assert p.deleted_by is None
 
 
 def test_stage_defaults():

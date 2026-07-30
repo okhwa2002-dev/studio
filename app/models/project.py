@@ -40,6 +40,18 @@ class Project(BaseEntity, table=True):
         sa_type=JSONB,
         sa_column_kwargs={"nullable": False, "comment": "스타일·provider 선택 등 (JSONB)"},
     )
+    # 소프트 삭제. 조회 쿼리는 deleted_at IS NULL만 보고, 정리 잡이 보관 기간(30일)이
+    # 지난 행을 파일과 함께 완전히 지운다(app/core/cleanup.py).
+    deleted_at: Optional[datetime] = Field(
+        default=None, sa_column_kwargs={"comment": "소프트 삭제 일시 (NULL=미삭제)"}
+    )
+    deleted_by: Optional[int] = Field(
+        default=None,
+        sa_type=BigInteger,
+        foreign_key="users.id",
+        nullable=True,
+        sa_column_kwargs={"comment": "삭제한 사용자 (FK: users.id)"},
+    )
 
     created_at: Optional[datetime] = created_at_field()
     created_by: Optional[int] = created_by_field(foreign_key="users.id")

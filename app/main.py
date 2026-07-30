@@ -20,6 +20,7 @@ from app.api.notices import router as notices_router
 from app.api.projects import router as projects_router
 from app.auth.admin_router import router as admin_users_router
 from app.auth.router import router as auth_router
+from app.core.cleanup import get_cleanup_job
 from app.core.worker import get_worker
 from app.runtime_settings import EnvSettingsError, check_env_defaults
 from app.utils.errors import DEFAULT_ERROR, AppError
@@ -44,9 +45,13 @@ async def lifespan(app: FastAPI):
     # 단계 실행은 요청이 아니라 이 워커가 맡는다. 기동 시 고아 상태도 여기서 정리된다.
     worker = get_worker()
     await worker.start()
+    # 수명주기가 끝난 데이터(만료 토큰·보관 기간 지난 삭제 프로젝트)를 주기적으로 지운다.
+    cleanup_job = get_cleanup_job()
+    await cleanup_job.start()
     try:
         yield
     finally:
+        await cleanup_job.stop()
         await worker.stop()
 
 

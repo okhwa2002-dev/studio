@@ -3,7 +3,7 @@ import json
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
@@ -11,6 +11,7 @@ from app.constants import AssetKind, ProjectStatus, StageName, StageStatus, User
 from app.core import events, pipeline, views
 from app.core.worker import get_worker
 from app.db import get_db, raw_connection
+from app.providers.script.schema import build_draft
 from app.queries import queries
 from app.runtime_settings import get_runtime_settings
 from app.utils import storage
@@ -110,6 +111,122 @@ async def get_project(
     conn = await raw_connection(db)
     await _load_owned_project(conn, project_id, user["id"])
     return await views.detail(conn, project_id)
+
+
+# 편집 상한. 60초 쇼츠에 한참 넉넉하게 두고, TTS·렌더가 몇십 분짜리를 물지 않게만 막는다.
+_MAX_SCENES = 20
+_MAX_NARRATION_CHARS = 2000        # 장면당
+_MAX_TOTAL_NARRATION_CHARS = 5000  # 전체 합 (초당 5자로 약 17분)
+
+
+class SceneEdit(BaseModel):
+    narration: str = Field(max_length=_MAX_NARRATION_CHARS)
+    # on_screen은 비어도 된다 — 스톡 검색이 topic으로 폴백한다(render/sources.queries_for).
+    on_screen: str = Field(default="", max_length=200)
+
+    @field_validator("narration")
+    @classmethod
+    def _narration_not_blank(cls, v: str) -> str:
+        # 나레이션이 곧 음성이다. 비면 무음 mp3가 만들어진다.
+        v = v.strip()
+        if not v:
+            raise ValueError("나레이션은 비워둘 수 없습니다.")
+        return v
+
+
+class ScriptEditRequest(BaseModel):
+    """사람이 편집한 대본. 사용자가 실제로 통제하는 필드만 받는다.
+
+    index와 estimated_duration_sec는 서버가 유도하므로(build_draft) 받지 않는다.
+    기존 ScriptDraft를 그대로 쓰지 않는 이유가 이것이다 — 그 모델은 둘 다 필수다.
+    또 상한을 ScriptDraft에 넣으면 AI 생성 경로까지 그 규칙에 걸려(장면 25개를 낸 응답이
+    FAILED가 된다) 이 기능과 무관한 동작이 바뀐다.
+    """
+
+    title: str = Field(max_length=200)
+    hook: str = Field(default="", max_length=500)  # 표시 전용이라 비어도 깨지지 않는다
+    scenes: list[SceneEdit] = Field(min_length=1, max_length=_MAX_SCENES)
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("제목은 비워둘 수 없습니다.")
+        return v
+
+    @field_validator("scenes")
+    @classmethod
+    def _total_narration_within_limit(cls, v: list[SceneEdit]) -> list[SceneEdit]:
+        total = sum(len(scene.narration) for scene in v)
+        if total > _MAX_TOTAL_NARRATION_CHARS:
+            raise ValueError(
+                f"나레이션 전체 길이가 {_MAX_TOTAL_NARRATION_CHARS}자를 넘습니다 (현재 {total}자)."
+            )
+        return v
+
+
+@router.put("/{project_id}/stages/script")
+async def save_script(
+    project_id: int,
+    body: ScriptEditRequest,
+    user: dict = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """검토 중인 대본을 사람이 고친 내용으로 교체한다.
+
+    편집할 수 있는 단계는 대본뿐이라 경로에 script를 리터럴로 박는다 — /stages/{name}으로
+    열어두면 음성·자막·영상도 편집 가능한 것처럼 읽힌다.
+    """
+    conn = await raw_connection(db)
+    await _load_owned_project(conn, project_id, user["id"])
+    stage = await _load_stage(conn, project_id, StageName.SCRIPT)
+
+    draft = build_draft(
+        body.title, body.hook, [(s.narration, s.on_screen) for s in body.scenes]
+    )
+    # 상태 검사는 DB의 CAS에 맡긴다 — 여기서 읽은 stage["status"]는 이미 낡았을 수 있다.
+    saved = await queries.update_stage_output_cas(
+        conn,
+        id=stage["id"],
+        output=json.dumps(draft.model_dump(), ensure_ascii=False),
+        expected_status=StageStatus.NEEDS_REVIEW,
+        updated_at=now_local(),
+        updated_by=user["id"],
+    )
+    if saved is None:
+        raise AppError(409, "STAGE_CONFLICT", "수정할 수 없는 상태입니다.")
+    await db.commit()
+    # 커밋 이후 conn 재획득 — 운영에서는 commit()이 raw 커넥션을 풀에 반납한다.
+    conn = await raw_connection(db)
+    return await views.detail(conn, project_id)
+
+
+@router.delete("/{project_id}")
+async def delete_project(
+    project_id: int, user: dict = Depends(current_user), db: AsyncSession = Depends(get_db)
+):
+    """프로젝트를 소프트 삭제한다. 파일은 그대로 두고 정리 잡이 보관 기간 후에 지운다.
+
+    소유자만 지울 수 있다 — 관리자는 열람 전용이고(admin 화면은 readOnly) 실행·승인·재생성도
+    모두 소유자 전용이라, 삭제만 예외로 두면 그 경계가 무너진다.
+    """
+    conn = await raw_connection(db)
+    await _load_owned_project(conn, project_id, user["id"])
+
+    # 워커가 손대는 중이면 막는다. 사용자가 몇 분 걸리는 작업 중에 삭제를 누르는 것은 대개
+    # 실수이고, QUEUED인 채로 지우면 워커가 run_one 맨 앞에서 프로젝트를 못 찾아 조용히
+    # 버리므로 그 단계가 영구히 QUEUED로 남는다.
+    active = await queries.count_active_stages(conn, project_id=project_id)
+    if active["n"] > 0:
+        raise AppError(
+            409, "PROJECT_BUSY", "실행 중인 단계가 있어 삭제할 수 없습니다. 완료된 뒤 다시 시도해 주세요."
+        )
+
+    now = now_local()
+    await queries.soft_delete_project(conn, id=project_id, deleted_at=now, deleted_by=user["id"])
+    await db.commit()
+    return {"id": project_id, "deleted_at": now}
 
 
 @router.post("/{project_id}/stages/{name}/run", status_code=202)

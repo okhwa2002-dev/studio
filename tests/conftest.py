@@ -84,13 +84,15 @@ def reset_events():
     # 이벤트 버스·전역 워커 싱글턴은 프로세스 전역이라 테스트끼리 샌다. 앞뒤로 비운다.
     # worker.reset()이 없으면 get_worker().start()를 쓰는 테스트가 훗날 추가될 때
     # 앞선 테스트들이 module-global asyncio.Queue에 쌓아둔 stage id를 그대로 물려받는다.
-    from app.core import events, worker
+    from app.core import cleanup, events, worker
 
     events.reset()
     worker.reset()
+    cleanup.reset()
     yield
     events.reset()
     worker.reset()
+    cleanup.reset()
 
 
 @pytest.fixture(autouse=True)

@@ -53,3 +53,41 @@ def test_clear_dir_leaves_sibling_files(monkeypatch, tmp_path):
 
     storage.clear_dir("projects/3/render/sources")
     assert (tmp_path / "projects/3/render/render.mp4").read_bytes() == b"keep"
+
+
+def test_delete_tree_removes_nested_directories(monkeypatch, tmp_path):
+    # 프로젝트 삭제가 쓰는 함수다. clear_dir과 달리 하위 디렉토리까지 통째로 지운다.
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    storage.write_bytes("projects/5/voice/voice.mp3", b"a")
+    storage.write_bytes("projects/5/captions/captions.srt", b"b")
+    storage.write_bytes("projects/5/render/sources/scene1.mp4", b"c")
+
+    storage.delete_tree("projects/5")
+    assert not (tmp_path / "projects/5").exists()
+
+
+def test_delete_tree_leaves_other_projects(monkeypatch, tmp_path):
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    storage.write_bytes("projects/5/voice/voice.mp3", b"drop")
+    storage.write_bytes("projects/6/voice/voice.mp3", b"keep")
+
+    storage.delete_tree("projects/5")
+    assert (tmp_path / "projects/6/voice/voice.mp3").read_bytes() == b"keep"
+
+
+def test_delete_tree_is_idempotent(monkeypatch, tmp_path):
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    storage.write_bytes("projects/5/voice/voice.mp3", b"a")
+
+    storage.delete_tree("projects/5")
+    storage.delete_tree("projects/5")        # 두 번째 호출도 통과
+    storage.delete_tree("projects/999")      # 애초에 없던 경로도 통과
+
+
+def test_delete_tree_rejects_escaping_path(monkeypatch, tmp_path):
+    # rmtree는 되돌릴 수 없으므로 루트 밖 경로 거부가 특히 중요하다.
+    monkeypatch.setattr(storage, "_root", lambda: tmp_path)
+    import pytest
+
+    with pytest.raises(ValueError):
+        storage.delete_tree("../..")

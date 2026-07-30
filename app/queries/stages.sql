@@ -47,6 +47,20 @@ SET status = :status,
     updated_by = :updated_by
 WHERE id = :id;
 
+-- name: update_stage_output_cas<!
+-- 사람이 고친 대본을 저장한다. status는 바꾸지 않는다 — 수정은 상태 전이가 아니라
+-- 검토 중 내용 변경이고, 저장 후에도 여전히 승인 대기다.
+--
+-- 상태 술어(AND status = :expected_status)가 진짜 가드다. 요청 진입 시 읽은 상태는
+-- 낡을 수 있다(다른 탭에서 승인, auto_run의 자동 승인 순간, 저장 더블클릭). 술어 없이
+-- UPDATE하면 이미 승인돼 음성 생성이 시작된 대본을 덮어써 음성과 대본이 어긋난다.
+UPDATE stages
+SET output = :output::jsonb,
+    updated_at = :updated_at,
+    updated_by = :updated_by
+WHERE id = :id AND status = :expected_status
+RETURNING id;
+
 -- name: find_stage_by_id^
 SELECT id, project_id, name, provider, status, output, error, attempt,
        started_at, finished_at, created_at, updated_at
