@@ -6,7 +6,6 @@ import { AdminNotices } from './pages/admin/AdminNotices'
 import { AdminProjects } from './pages/admin/AdminProjects'
 import { AdminSystem } from './pages/admin/AdminSystem'
 import { AdminUsers } from './pages/admin/AdminUsers'
-import { Approvals } from './pages/admin/Approvals'
 import { Dashboard } from './pages/Dashboard'
 import { Faqs } from './pages/faqs/Faqs'
 import { Login } from './pages/Login'
@@ -49,7 +48,12 @@ function Routing() {
           <Route path="/faqs" element={<Faqs />} />
           <Route path="/settings" element={<Settings />} />
           <Route element={<RequireAdmin />}>
-            <Route path="/admin/approvals" element={<Approvals />} />
+            {/* 가입 승인 전용 화면은 두지 않는다 — 승인·거절은 사용자 관리의 "대기" 탭이 맡는다.
+                예전 /admin/approvals 링크는 여기서 그 탭으로 넘긴다. */}
+            <Route
+              path="/admin/approvals"
+              element={<Navigate to="/admin/users?status=PENDING" replace />}
+            />
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/admin/projects" element={<AdminProjects />} />
             <Route path="/admin/projects/:id" element={<ProjectDetail readOnly />} />
