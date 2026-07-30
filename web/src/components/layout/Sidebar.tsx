@@ -1,8 +1,19 @@
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { adminUsers } from '../../lib/admin'
 import { useAuth } from '../../lib/auth'
-import { NAV, type NavItem } from '../../lib/nav'
+import { ADMIN_USERS_PATH, NAV, type NavItem } from '../../lib/nav'
 
-function NavItemLink({ item, onNavigate }: { item: NavItem; onNavigate: () => void }) {
+// badge가 0이면 아무것도 그리지 않는다 — 0을 보여주면 눈길만 끈다(상단바 종과 같은 규칙).
+function NavItemLink({
+  item,
+  badge = 0,
+  onNavigate,
+}: {
+  item: NavItem
+  badge?: number
+  onNavigate: () => void
+}) {
   return (
     <NavLink
       to={item.path}
@@ -14,9 +25,38 @@ function NavItemLink({ item, onNavigate }: { item: NavItem; onNavigate: () => vo
       }
     >
       <span aria-hidden>{item.icon}</span>
-      {item.label}
+      <span className="flex-1">{item.label}</span>
+      {badge > 0 && (
+        <span
+          aria-label={`가입 승인 대기 ${badge}건`}
+          className="min-w-5 rounded-full bg-red-600 px-1.5 text-center text-[10px] font-medium leading-5 text-white"
+        >
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </NavLink>
   )
+}
+
+// 사용자 관리 항목에 붙는 가입 승인 대기 건수. 서랍은 열 때마다 새로 마운트되므로
+// (AppLayout이 menuOpen일 때만 그린다) 여는 순간의 최신 값을 보여준다 — 폴링하지 않는다.
+function usePendingUserCount(enabled: boolean): number {
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    if (!enabled) return
+    let alive = true
+    // 배지는 부가 정보다. 조회가 실패하면 0으로 두고 그리지 않는다.
+    adminUsers
+      .list('PENDING')
+      .then((rows) => alive && setCount(rows.length))
+      .catch(() => alive && setCount(0))
+    return () => {
+      alive = false
+    }
+  }, [enabled])
+
+  return count
 }
 
 // 콘텐츠 위에 떠서 열리는 서랍이다. 레이아웃 공간을 차지하지 않는다(fixed).
@@ -26,7 +66,9 @@ export function Sidebar({ onNavigate, onClose }: { onNavigate: () => void; onClo
   const { user } = useAuth()
   const common = NAV.filter((item) => !item.adminOnly)
   // 메뉴를 숨기는 것은 UX일 뿐이다. 보안은 서버의 require_admin이 강제한다.
-  const admin = user?.role === 'ADMIN' ? NAV.filter((item) => item.adminOnly) : []
+  const isAdmin = user?.role === 'ADMIN'
+  const admin = isAdmin ? NAV.filter((item) => item.adminOnly) : []
+  const pending = usePendingUserCount(isAdmin)
 
   return (
     // 화면 최상단(top-0)부터 전체 높이로 열린다. 맨 위 행의 ☰가 닫기 버튼이고,
@@ -52,7 +94,12 @@ export function Sidebar({ onNavigate, onClose }: { onNavigate: () => void; onClo
               관리자
             </div>
             {admin.map((item) => (
-              <NavItemLink key={item.path} item={item} onNavigate={onNavigate} />
+              <NavItemLink
+                key={item.path}
+                item={item}
+                badge={item.path === ADMIN_USERS_PATH ? pending : 0}
+                onNavigate={onNavigate}
+              />
             ))}
           </>
         )}
