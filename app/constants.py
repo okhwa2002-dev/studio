@@ -86,3 +86,61 @@ class FaqStatus(StrEnum):
 
     DRAFT = "DRAFT"
     PUBLISHED = "PUBLISHED"
+
+
+class AuditAction(StrEnum):
+    """audit_logs.action 코드값. DB에 대문자로 저장된다.
+
+    이 목록이 곧 관리자 화면 필터의 선택지다. 항목을 추가하면
+    web/src/lib/auditLogs.ts의 AUDIT_ACTION_LABEL에도 라벨을 추가해야 화면에 뜬다.
+    """
+
+    # 인증
+    REGISTER = "REGISTER"
+    LOGIN_SUCCESS = "LOGIN_SUCCESS"
+    LOGIN_FAILURE = "LOGIN_FAILURE"
+    ACCOUNT_LOCKED = "ACCOUNT_LOCKED"
+    LOGOUT = "LOGOUT"
+    PASSWORD_CHANGE = "PASSWORD_CHANGE"
+    TOKEN_REUSE_DETECTED = "TOKEN_REUSE_DETECTED"
+
+    # 사용자 관리
+    USER_APPROVE = "USER_APPROVE"
+    USER_REJECT = "USER_REJECT"
+    USER_UNLOCK = "USER_UNLOCK"
+    USER_RESET_PASSWORD = "USER_RESET_PASSWORD"
+    USER_RESET_FAILURES = "USER_RESET_FAILURES"
+
+    # 콘텐츠
+    NOTICE_CREATE = "NOTICE_CREATE"
+    NOTICE_UPDATE = "NOTICE_UPDATE"
+    NOTICE_DELETE = "NOTICE_DELETE"
+    FAQ_CREATE = "FAQ_CREATE"
+    FAQ_UPDATE = "FAQ_UPDATE"
+    FAQ_DELETE = "FAQ_DELETE"
+
+    # 시스템
+    SYSTEM_SETTINGS_UPDATE = "SYSTEM_SETTINGS_UPDATE"
+
+    # 프로젝트
+    PROJECT_CREATE = "PROJECT_CREATE"
+    PROJECT_DELETE = "PROJECT_DELETE"
+    SCRIPT_UPDATE = "SCRIPT_UPDATE"
+    STAGE_RUN = "STAGE_RUN"
+    STAGE_APPROVE = "STAGE_APPROVE"
+    STAGE_REGENERATE = "STAGE_REGENERATE"
+
+
+class AuditTarget(StrEnum):
+    """audit_logs.target_type 코드값.
+
+    STAGE가 없는 것은 의도적이다 — 단계는 프로젝트에 종속된 행이라 단독으로 의미가
+    없고, 대상을 PROJECT로 통일해야 "이 프로젝트에 무슨 일이 있었나"가 한 값으로 모인다.
+    단계 이름은 summary가 말해준다.
+    """
+
+    USER = "USER"
+    PROJECT = "PROJECT"
+    NOTICE = "NOTICE"
+    FAQ = "FAQ"
+    SYSTEM = "SYSTEM"
