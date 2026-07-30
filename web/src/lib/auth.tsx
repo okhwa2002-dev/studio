@@ -6,6 +6,9 @@ export type User = {
   email: string
   name: string
   role: 'MEMBER' | 'ADMIN'
+  // 관리자가 비밀번호를 초기화하면 true가 된다. RequireAuth가 이 값을 보고 강제 변경
+  // 화면으로 보내며, 서버도 current_user에서 다른 API를 403으로 막는다.
+  must_change_password: boolean
 }
 
 type AuthState = {
@@ -16,6 +19,10 @@ type AuthState = {
   // 가입 자동 승인 설정에 따라 달라지므로 호출자가 안내를 갈라야 한다.
   register: (email: string, password: string, name: string) => Promise<string>
   logout: () => Promise<void>
+  // 서버에서 현재 사용자를 다시 읽어 상태를 맞춘다. 강제 변경 화면이 비밀번호를
+  // 바꾼 뒤 must_change_password가 내려간 것을 반영하는 데 쓴다 —
+  // 이게 없으면 화면이 AuthProvider 밖에서 setUser를 만져야 한다.
+  refresh: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -62,8 +69,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const refresh = async () => {
+    setUser(await api.get<User>('/auth/me'))
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   )

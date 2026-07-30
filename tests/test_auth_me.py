@@ -47,7 +47,15 @@ async def test_me_does_not_leak_password_hash(client, db_session):
 
     resp = await client.get("/api/auth/me")
     assert resp.status_code == 200
-    assert set(resp.json().keys()) == {"id", "email", "role", "name"}
+    # 화이트리스트로 고정한다 — 필드가 늘어날 때 이 테스트가 반드시 걸려서,
+    # password_hash나 감사 컬럼이 실수로 함께 새어나가지 않는지 확인하게 된다.
+    assert set(resp.json().keys()) == {
+        "id",
+        "email",
+        "role",
+        "name",
+        "must_change_password",
+    }
 
 
 async def test_me_returns_name(client, db_session):

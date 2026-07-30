@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { FormError } from '../../components/FormError'
 import { Modal } from '../../components/Modal'
 import { seqColumn } from '../../components/table/seqColumn'
@@ -7,6 +8,8 @@ import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
 import { adminUsers, type AdminUser } from '../../lib/admin'
 import { ApiError } from '../../lib/api'
+import { useAuth } from '../../lib/auth'
+import { useToast } from '../../lib/toast'
 
 // UI 전용 필터 값. 'ALL'은 상태 무관 전체, 'LOCKED'는 상태와 무관하게 잠긴 계정만
 // (둘 다 백엔드에는 status 없이 요청하고 잠김은 클라이언트에서 거른다).
@@ -76,26 +79,65 @@ function formatDateTime(iso: string) {
 
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex justify-between gap-4 py-2 text-sm">
+    // min-h로 행 높이를 고정한다 — 값이 텍스트인 행과 버튼·뱃지가 있는 행의 높이가
+    // 들쭉날쭉하지 않게 맞춘다(버튼 쪽이 내용만으로도 더 높아진다).
+    <div className="flex min-h-11 items-center justify-between gap-4 py-3 text-sm">
       <dt className="shrink-0 text-fg-muted">{label}</dt>
       <dd className="text-right text-fg">{children}</dd>
     </div>
   )
 }
 
+// 비밀번호 초기화 후 발급된 임시 비밀번호를 보여주는 자리. 관리자가 사용자에게
+// 전달해야 하는 값이라 눈으로 옮겨 적게 하지 않고 복사 버튼을 함께 둔다.
+function TempPassword({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+    } catch {
+      // 복사 실패는 알리지 않는다 — 값이 화면에 그대로 보이므로 손으로 옮겨 적을 수 있고,
+      // 실패를 알려도 사용자가 달리 할 수 있는 일이 없다.
+    }
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <code className="rounded bg-surface-muted px-2 py-0.5 font-mono text-xs text-fg">
+        {value}
+      </code>
+      <button
+        onClick={copy}
+        className="rounded-md border border-line-strong px-2 py-0.5 text-xs font-medium text-fg-body hover:bg-surface-muted"
+      >
+        {copied ? '복사됨' : '복사'}
+      </button>
+      <span className="text-xs text-fg-muted">변경 대기</span>
+    </span>
+  )
+}
+
 // 목록 행을 클릭했을 때 뜨는 상세. 값은 이미 받아온 행을 그대로 쓴다(추가 요청 없음).
-// 실패 횟수 초기화만 서버 액션이며, 성공하면 부모가 행을 갱신해 화면에 반영한다.
+// 실패 횟수 초기화와 비밀번호 초기화만 서버 액션이며, 성공하면 부모가 행을 갱신한다.
 function UserDetailModal({
   user,
+  isSelf,
   onResetFailures,
+  onResetPassword,
   onClose,
 }: {
   user: AdminUser
+  isSelf: boolean
   onResetFailures: (id: number) => Promise<void>
+  onResetPassword: (id: number) => Promise<string>
   onClose: () => void
 }) {
   const [resetting, setResetting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resettingPassword, setResettingPassword] = useState(false)
+  const [tempPassword, setTempPassword] = useState<string | null>(null)
 
   const reset = async () => {
     setResetting(true)
@@ -109,14 +151,55 @@ function UserDetailModal({
     }
   }
 
+  const resetPassword = async () => {
+    // 되돌릴 수 없고 이 사용자의 모든 세션을 끊는다 — 실패 횟수 초기화와 달리 한 번 묻는다.
+    const ok = window.confirm(
+      `${user.name}(${user.email})의 비밀번호를 초기화하시겠습니까?\n\n` +
+        '이 사용자의 모든 로그인 세션이 종료되고, 다음 로그인 시 새 비밀번호를 설정해야 합니다.',
+    )
+    if (!ok) return
+
+    setResettingPassword(true)
+    setError(null)
+    try {
+      setTempPassword(await onResetPassword(user.id))
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : UNKNOWN)
+    } finally {
+      setResettingPassword(false)
+    }
+  }
+
   return (
-    <Modal title="회원 상세" onClose={onClose}>
+    <Modal title="회원 상세" width="lg" onClose={onClose}>
       <dl className="divide-y divide-line-subtle">
         <DetailRow label="이름">{user.name}</DetailRow>
         <DetailRow label="이메일">{user.email}</DetailRow>
         <DetailRow label="역할">{roleLabel(user.role)}</DetailRow>
         <DetailRow label="상태">
           <StatusBadge status={user.status} />
+        </DetailRow>
+        <DetailRow label="비밀번호">
+          {tempPassword !== null ? (
+            <TempPassword value={tempPassword} />
+          ) : isSelf ? (
+            // 서버가 400으로 막는다. 항상 실패하는 버튼은 버그로 보이므로 감춘다 —
+            // 본인 비밀번호는 설정 화면에서 바꾼다.
+            <span className="text-xs text-fg-muted">본인은 설정 화면에서 변경</span>
+          ) : (
+            <span className="inline-flex items-center gap-2">
+              {user.must_change_password && (
+                <span className="text-xs text-fg-muted">초기화됨 (변경 대기)</span>
+              )}
+              <button
+                onClick={resetPassword}
+                disabled={resettingPassword}
+                className="rounded-md border border-line-strong px-2 py-0.5 text-xs font-medium text-fg-body hover:bg-surface-muted disabled:opacity-50"
+              >
+                {resettingPassword ? '초기화 중…' : '초기화'}
+              </button>
+            </span>
+          )}
         </DetailRow>
         <DetailRow label="로그인 실패 횟수">
           <span className="inline-flex items-center gap-2">
@@ -152,6 +235,42 @@ function UserDetailModal({
   )
 }
 
+type ActionKey = 'approve' | 'reject' | 'unlock'
+
+// 승인/거절/잠금 해제 실행 전 확인 문구. 되돌리기 어려운 '거절'만 danger 톤이다.
+const ACTION_CONFIRM: Record<
+  ActionKey,
+  {
+    title: string
+    confirmLabel: string
+    tone: 'default' | 'danger'
+    message: (name: string) => string
+    success: string // 완료 토스트 문구
+  }
+> = {
+  approve: {
+    title: '사용자 승인',
+    confirmLabel: '승인',
+    tone: 'default',
+    message: (n) => `${n} 님을 승인하시겠습니까? 승인하면 로그인할 수 있습니다.`,
+    success: '승인했습니다.',
+  },
+  reject: {
+    title: '사용자 거절',
+    confirmLabel: '거절',
+    tone: 'danger',
+    message: (n) => `${n} 님을 거절하시겠습니까? 거절하면 로그인할 수 없습니다.`,
+    success: '거절했습니다.',
+  },
+  unlock: {
+    title: '잠금 해제',
+    confirmLabel: '잠금 해제',
+    tone: 'default',
+    message: (n) => `${n} 님의 계정 잠금을 해제하시겠습니까?`,
+    success: '잠금을 해제했습니다.',
+  },
+}
+
 export function AdminUsers() {
   const [rows, setRows] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -160,7 +279,12 @@ export function AdminUsers() {
   const [actingId, setActingId] = useState<number | null>(null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<AdminUser | null>(null)
+  // 승인/거절/잠금 해제 확인 대화상자의 대상. null이면 닫힘.
+  const [confirming, setConfirming] = useState<{ id: number; action: ActionKey; name: string } | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
+  // 상세에서 본인 행의 비밀번호 초기화 버튼을 감추는 데만 쓴다(서버도 400으로 막는다).
+  const { user: currentUser } = useAuth()
+  const toast = useToast()
 
   // 탭 상태를 따로 두지 않고 URL에서 읽는다. 탭 클릭도 URL을 고치므로 둘이 어긋날 수
   // 없고, 대시보드에서 같은 카드를 다시 눌러도(주소가 그대로여도) 탭이 딴 데 가 있지 않다.
@@ -188,14 +312,15 @@ export function AdminUsers() {
     load()
   }, [load])
 
-  const act = async (id: number, action: 'approve' | 'reject' | 'unlock') => {
+  const act = async (id: number, action: ActionKey) => {
     setActingId(id)
     setError(null)
     try {
       await adminUsers[action](id)
       load() // 처리된 사용자는 현재(대기) 목록에서 빠진다
+      toast.success(ACTION_CONFIRM[action].success)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : UNKNOWN)
+      toast.error(e instanceof ApiError ? e.message : UNKNOWN)
     } finally {
       setActingId(null)
     }
@@ -207,6 +332,22 @@ export function AdminUsers() {
     const cleared = { failed_login_count: 0, locked_at: null }
     setSelected((prev) => (prev && prev.id === id ? { ...prev, ...cleared } : prev))
     setRows((prev) => prev.map((u) => (u.id === id ? { ...u, ...cleared } : u)))
+  }
+
+  // 발급된 임시 비밀번호를 모달에 돌려준다(모달이 그 값을 표시한다).
+  // 목록을 다시 불러오지 않는다 — 초기화는 status를 바꾸지 않아 행이 현재 탭에 그대로
+  // 남으므로, 서버가 UPDATE한 컬럼과 같은 값으로 그 행만 갱신하면 화면과 DB가 맞는다.
+  const resetPassword = async (id: number) => {
+    const { temp_password, unlocked_at } = await adminUsers.resetPassword(id)
+    const patch = {
+      must_change_password: true,
+      failed_login_count: 0,
+      locked_at: null,
+      unlocked_at,
+    }
+    setSelected((prev) => (prev && prev.id === id ? { ...prev, ...patch } : prev))
+    setRows((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)))
+    return temp_password
   }
 
   const keyword = query.trim().toLowerCase()
@@ -241,14 +382,14 @@ export function AdminUsers() {
             // 행 클릭(상세 열기)과 겹치지 않게 버튼 영역의 클릭은 전파를 막는다.
             <div className="flex justify-center gap-2" onClick={(e) => e.stopPropagation()}>
               <button
-                onClick={() => act(u.id, 'approve')}
+                onClick={() => setConfirming({ id: u.id, action: 'approve', name: u.name })}
                 disabled={actingId !== null}
                 className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-on-primary disabled:opacity-50"
               >
                 승인
               </button>
               <button
-                onClick={() => act(u.id, 'reject')}
+                onClick={() => setConfirming({ id: u.id, action: 'reject', name: u.name })}
                 disabled={actingId !== null}
                 className="rounded-md border border-line-strong px-3 py-1 text-xs font-medium text-fg-body hover:bg-surface-muted disabled:opacity-50"
               >
@@ -261,7 +402,7 @@ export function AdminUsers() {
           return (
             <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
               <button
-                onClick={() => act(u.id, 'unlock')}
+                onClick={() => setConfirming({ id: u.id, action: 'unlock', name: u.name })}
                 disabled={actingId !== null}
                 className="rounded-md border border-line-strong px-3 py-1 text-xs font-medium text-fg-body hover:bg-surface-muted disabled:opacity-50"
               >
@@ -348,8 +489,25 @@ export function AdminUsers() {
       {selected && (
         <UserDetailModal
           user={selected}
+          isSelf={selected.id === currentUser?.id}
           onResetFailures={resetFailures}
+          onResetPassword={resetPassword}
           onClose={() => setSelected(null)}
+        />
+      )}
+
+      {confirming && (
+        <ConfirmDialog
+          title={ACTION_CONFIRM[confirming.action].title}
+          message={ACTION_CONFIRM[confirming.action].message(confirming.name)}
+          confirmLabel={ACTION_CONFIRM[confirming.action].confirmLabel}
+          tone={ACTION_CONFIRM[confirming.action].tone}
+          busy={actingId !== null}
+          onConfirm={async () => {
+            await act(confirming.id, confirming.action)
+            setConfirming(null)
+          }}
+          onClose={() => setConfirming(null)}
         />
       )}
     </div>

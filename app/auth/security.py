@@ -12,6 +12,13 @@ ACCESS_TOKEN_MINUTES = 30
 
 _hasher = PasswordHasher()
 
+# 관리자가 비밀번호를 초기화할 때 설정되는 고정 비밀번호. 초기화가 must_change_password를
+# 켜므로, 이 값이 계정에 남아 있는 구간은 사용자가 첫 로그인해 바꾸기 전까지다.
+# 추후 랜덤 발급으로 대체한다 — 이 상수 대신 생성 함수를 쓰면 호출부와 응답 형태는
+# 그대로 둘 수 있다. password_min_len 검증은 거치지 않는다(즉시 변경이 강제되고,
+# 새 비밀번호는 정책을 통과해야 한다).
+INITIAL_PASSWORD = "qwer1234"
+
 
 def hash_password(password: str) -> str:
     return _hasher.hash(password)

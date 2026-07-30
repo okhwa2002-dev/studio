@@ -66,6 +66,15 @@ class User(BaseEntity, table=True):
         default=None,
         sa_column_kwargs={"comment": "관리자가 잠금 해제한 시각 (해제일시)"},
     )
+    # server_default를 두는 이유는 failed_login_count와 같다 — raw SQL insert_user가
+    # 이 컬럼을 넘기지 않으므로 DB가 기본값을 채워야 한다.
+    must_change_password: bool = Field(
+        default=False,
+        sa_column_kwargs={
+            "server_default": "false",
+            "comment": "관리자 초기화 후 비밀번호 변경 강제 여부 (true=변경 전까지 다른 API 차단)",
+        },
+    )
 
     created_at: Optional[datetime] = created_at_field()
     created_by: Optional[int] = created_by_field(

@@ -16,6 +16,8 @@ async def test_user_defaults(db_session):
     assert user.status == UserStatus.PENDING
     assert user.approved_at is None
     assert user.approved_by is None
+    # 관리자 초기화 전에는 강제 변경이 걸려 있지 않다.
+    assert user.must_change_password is False
 
 
 async def test_user_email_is_unique(db_session):

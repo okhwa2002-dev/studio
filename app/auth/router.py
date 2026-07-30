@@ -175,7 +175,16 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
     await db.commit()
 
     _set_auth_cookies(response, access_token, refresh_token)
-    return {"id": row["id"], "email": row["email"], "role": row["role"], "name": row["name"]}
+    # 강제 변경 상태여도 로그인 자체는 성공한다 — 실패시키면 비밀번호를 바꿀 방법이 없다.
+    # 차단은 current_user의 게이트가 맡고, 프론트는 이 플래그로 변경 화면을 띄운다.
+    # (프론트의 login은 이 응답을 그대로 쓰고 /auth/me를 다시 부르지 않으므로 여기에도 필요하다)
+    return {
+        "id": row["id"],
+        "email": row["email"],
+        "role": row["role"],
+        "name": row["name"],
+        "must_change_password": row["must_change_password"],
+    }
 
 
 @router.post("/refresh")
@@ -240,7 +249,15 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
 async def me(user: dict = Depends(current_user)):
     # current_user가 쿠키 검증·상태 확인·password_hash 제거까지 이미 수행한다.
     # 여기서는 프론트가 실제로 쓰는 필드만 골라 내보낸다(감사 컬럼·approved_by 등 미노출).
-    return {"id": user["id"], "email": user["email"], "role": user["role"], "name": user["name"]}
+    # must_change_password는 게이트가 이 경로만은 통과시키는 이유다 — 프론트가 세션을
+    # 복원할 때 강제 변경 상태임을 알아야 그 화면으로 보낼 수 있다.
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "role": user["role"],
+        "name": user["name"],
+        "must_change_password": user["must_change_password"],
+    }
 
 
 class ChangePasswordRequest(BaseModel):

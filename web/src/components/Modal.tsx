@@ -8,13 +8,22 @@ import { useEffect, type ReactNode } from 'react'
 // target이 배경이 된다 — 이벤트가 패널을 거치지 않아 패널에서 막을 수도 없다.
 // 누른 곳과 뗀 곳을 따로 보면 구분할 수는 있지만, 입력 폼을 담는 모달에서 배경 클릭은
 // 작성 중인 내용을 통째로 날리는 실수에 더 가깝다. 닫는 길은 ✕와 Esc 둘로 둔다.
+// 너비 선택지. 값은 Tailwind 클래스를 그대로 쓰지 않고 여기서 매핑한다 —
+// 호출부가 임의 클래스를 넘기면 모달 폭이 화면마다 제각각이 된다.
+const WIDTH_CLASS = {
+  md: 'max-w-lg', // 기본. 입력 폼·짧은 본문
+  lg: 'max-w-2xl', // 항목이 많은 상세(회원 상세 등)
+} as const
+
 export function Modal({
   title,
   onClose,
+  width = 'md',
   children,
 }: {
   title: string
   onClose: () => void
+  width?: keyof typeof WIDTH_CLASS
   children: ReactNode
 }) {
   useEffect(() => {
@@ -28,7 +37,7 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-overlay p-4">
       <div
-        className="w-full max-w-lg rounded-lg bg-surface p-6 shadow-xl"
+        className={`w-full ${WIDTH_CLASS[width]} rounded-lg bg-surface p-6 shadow-xl`}
         role="dialog"
         aria-modal="true"
         aria-label={title}

@@ -1,6 +1,6 @@
 -- name: find_by_email^
 SELECT id, email, name, password_hash, role, status, approved_at, approved_by,
-       failed_login_count, locked_at, unlocked_at,
+       failed_login_count, locked_at, unlocked_at, must_change_password,
        created_at, updated_at, created_by, updated_by
 FROM users
 WHERE email = :email;
@@ -12,14 +12,14 @@ RETURNING id;
 
 -- name: find_by_id^
 SELECT id, email, name, password_hash, role, status, approved_at, approved_by,
-       failed_login_count, locked_at, unlocked_at,
+       failed_login_count, locked_at, unlocked_at, must_change_password,
        created_at, updated_at, created_by, updated_by
 FROM users
 WHERE id = :id;
 
 -- name: list_by_status
 SELECT id, email, name, role, status, approved_at, approved_by,
-       failed_login_count, locked_at, unlocked_at,
+       failed_login_count, locked_at, unlocked_at, must_change_password,
        created_at, updated_at
 FROM users
 WHERE status = :status
@@ -27,7 +27,7 @@ ORDER BY created_at ASC;
 
 -- name: list_all
 SELECT id, email, name, role, status, approved_at, approved_by,
-       failed_login_count, locked_at, unlocked_at,
+       failed_login_count, locked_at, unlocked_at, must_change_password,
        created_at, updated_at
 FROM users
 ORDER BY created_at ASC;
@@ -50,9 +50,27 @@ SET status = :status,
 WHERE id = :id;
 
 -- name: update_password!
--- 본인이 설정 화면에서 비밀번호를 바꾼다. updated_by는 본인 id다.
+-- 본인이 설정 화면(또는 강제 변경 화면)에서 비밀번호를 바꾼다. updated_by는 본인 id다.
+-- must_change_password를 함께 내려 강제 변경을 해제한다 — 본인이 비밀번호를 바꾸는
+-- 유일한 경로라 여기 한 곳이면 충분하고, 일반 변경에서도 false가 항상 맞는 값이다.
 UPDATE users
 SET password_hash = :password_hash,
+    must_change_password = FALSE,
+    updated_at = :updated_at,
+    updated_by = :updated_by
+WHERE id = :id;
+
+-- name: admin_reset_password!
+-- 관리자가 비밀번호를 초기값으로 되돌린다. 변경 강제 플래그를 켜고, 잠김·실패 횟수도
+-- 함께 푼다 — 비밀번호를 잊어 연속 실패로 잠긴 계정이 가장 흔한 초기화 대상이라,
+-- 관리자가 [잠금 해제]를 따로 누르게 할 이유가 없다. unlocked_at도 채워서 목록의
+-- '해제일시'가 unlock_user로 푼 것과 같이 보이게 한다.
+UPDATE users
+SET password_hash = :password_hash,
+    must_change_password = TRUE,
+    failed_login_count = 0,
+    locked_at = NULL,
+    unlocked_at = :unlocked_at,
     updated_at = :updated_at,
     updated_by = :updated_by
 WHERE id = :id;

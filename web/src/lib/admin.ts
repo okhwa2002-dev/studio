@@ -14,6 +14,8 @@ export type AdminUser = {
   failed_login_count: number
   locked_at: string | null
   unlocked_at: string | null
+  // 관리자가 비밀번호를 초기화한 뒤 사용자가 아직 바꾸지 않은 상태.
+  must_change_password: boolean
 }
 
 export const adminUsers = {
@@ -25,6 +27,12 @@ export const adminUsers = {
   unlock: (id: number) => api.post<{ id: number; unlocked_at: string }>(`/admin/users/${id}/unlock`),
   resetFailures: (id: number) =>
     api.post<{ id: number; failed_login_count: number }>(`/admin/users/${id}/reset-failures`),
+  // 응답의 temp_password를 화면이 그대로 보여준다 — 초기 비밀번호를 프론트 상수로
+  // 두지 않으므로, 서버가 랜덤 발급으로 바뀌어도 이 화면은 고칠 것이 없다.
+  resetPassword: (id: number) =>
+    api.post<{ id: number; temp_password: string; unlocked_at: string }>(
+      `/admin/users/${id}/reset-password`,
+    ),
 }
 
 // 관리자 전체 프로젝트 목록의 한 행. 소유자 이름·이메일이 조인돼 함께 온다.

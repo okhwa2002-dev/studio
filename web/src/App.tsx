@@ -1,11 +1,13 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './layouts/AppLayout'
 import { AuthProvider, useAuth } from './lib/auth'
+import { ToastProvider } from './lib/toast'
 import { AdminFaqs } from './pages/admin/AdminFaqs'
 import { AdminNotices } from './pages/admin/AdminNotices'
 import { AdminProjects } from './pages/admin/AdminProjects'
 import { AdminSystem } from './pages/admin/AdminSystem'
 import { AdminUsers } from './pages/admin/AdminUsers'
+import { ChangePasswordRequired } from './pages/ChangePasswordRequired'
 import { Dashboard } from './pages/Dashboard'
 import { Faqs } from './pages/faqs/Faqs'
 import { Login } from './pages/Login'
@@ -40,6 +42,10 @@ function Routing() {
       </Route>
       <Route path="/pending" element={<PendingApproval />} />
       <Route element={<RequireAuth />}>
+        {/* AppLayout 밖이다 — 강제 변경 중에는 사이드바의 어느 메뉴도 쓸 수 없다
+            (서버가 403으로 막는다). RequireAuth가 이 경로로 보내고, 플래그가
+            내려가면 다시 대시보드로 돌려보낸다. */}
+        <Route path="/change-password" element={<ChangePasswordRequired />} />
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/projects" element={<Projects />} />
@@ -73,7 +79,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routing />
+        <ToastProvider>
+          <Routing />
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   )
