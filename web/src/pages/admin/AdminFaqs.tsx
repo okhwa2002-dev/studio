@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FormError } from '../../components/FormError'
 import { Modal } from '../../components/Modal'
+import { seqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
 import { adminFaqs, type AdminFaq, type FaqPayload } from '../../lib/admin'
@@ -209,9 +210,7 @@ export function AdminFaqs() {
   })
 
   const columns: Column<AdminFaq>[] = [
-    // 관리자가 조정해야 하는 값이라 목록에 그대로 보여준다 — 보이지 않으면
-    // 순서를 바꿀 때마다 모달을 열어 확인해야 한다.
-    { header: '순서', cell: (f) => f.sort_order, align: 'center', width: 72 },
+    seqColumn<AdminFaq>(filteredRows.length, page, PAGE_SIZE),
     { header: '질문', cell: (f) => f.question },
     { header: '분류', cell: (f) => FAQ_CATEGORY_LABEL[f.category], align: 'center' },
     { header: '상태', cell: (f) => <StatusBadge status={f.status} />, align: 'center' },
