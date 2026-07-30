@@ -24,6 +24,14 @@ const STATUS_TABS: { status: StatusFilter; label: string }[] = [
 // URL ?status= 로 넘어온 값이 유효한 탭인지 검사한다(대시보드 딥링크 대비).
 const STATUS_VALUES = new Set<string>(STATUS_TABS.map((t) => t.status))
 
+// 필터는 URL 하나만 보고 정한다. 알 수 없는 값(또는 파라미터 없음)은 '전체'다.
+// (?locked=1은 예전 링크 호환용 별칭이다.)
+function readStatus(params: URLSearchParams): StatusFilter {
+  if (params.get('locked') === '1') return 'LOCKED'
+  const s = params.get('status')
+  return s && STATUS_VALUES.has(s) ? (s as StatusFilter) : 'ALL'
+}
+
 const PAGE_SIZE = 10
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
@@ -145,7 +153,6 @@ function UserDetailModal({
 }
 
 export function AdminUsers() {
-  const [status, setStatus] = useState<StatusFilter>('ALL')
   const [rows, setRows] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -153,16 +160,16 @@ export function AdminUsers() {
   const [actingId, setActingId] = useState<number | null>(null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<AdminUser | null>(null)
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  // 대시보드 딥링크의 필터를 반영한다: ?status=PENDING·LOCKED 등 → 해당 탭.
-  // (?locked=1은 예전 링크 호환용 별칭이다.)
+  // 탭 상태를 따로 두지 않고 URL에서 읽는다. 탭 클릭도 URL을 고치므로 둘이 어긋날 수
+  // 없고, 대시보드에서 같은 카드를 다시 눌러도(주소가 그대로여도) 탭이 딴 데 가 있지 않다.
+  const status = readStatus(searchParams)
+
+  // 탭을 바꾸면 목록이 통째로 바뀐다 — 이전 탭에서 보던 페이지 번호는 의미가 없다.
   useEffect(() => {
-    const s = searchParams.get('status')
-    if (searchParams.get('locked') === '1') setStatus('LOCKED')
-    else if (s && STATUS_VALUES.has(s)) setStatus(s as StatusFilter)
     setPage(1)
-  }, [searchParams])
+  }, [status])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -203,11 +210,17 @@ export function AdminUsers() {
   }
 
   const keyword = query.trim().toLowerCase()
-  const filteredRows = rows.filter((u) => {
-    if (status === 'LOCKED' && !u.locked_at) return false
-    if (!keyword) return true
-    return u.name.toLowerCase().includes(keyword) || u.email.toLowerCase().includes(keyword)
-  })
+  const filteredRows = rows
+    .filter((u) => {
+      if (status === 'LOCKED' && !u.locked_at) return false
+      if (!keyword) return true
+      return u.name.toLowerCase().includes(keyword) || u.email.toLowerCase().includes(keyword)
+    })
+    // 승인 대기가 관리자의 할 일이다 — 상태를 섞어 보는 탭('전체'·'잠김')에서 맨 위로 올린다.
+    // 정렬은 여기서 한다: 페이지 자르기(pageRows)보다 앞서야 1페이지에 모이고,
+    // filter가 만든 새 배열이라 rows 원본은 건드리지 않는다.
+    // sort는 안정 정렬이므로 같은 그룹 안에서는 서버 정렬(가입일 오름차순)이 그대로 남는다.
+    .sort((a, b) => Number(b.status === 'PENDING') - Number(a.status === 'PENDING'))
 
   const columns: Column<AdminUser>[] = [
     seqColumn<AdminUser>(filteredRows.length, page, PAGE_SIZE),
@@ -274,10 +287,10 @@ export function AdminUsers() {
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.status}
-              onClick={() => {
-                setStatus(tab.status)
-                setPage(1)
-              }}
+              // 필터를 URL에 적어 탭·주소·딥링크가 한 값을 보게 한다. replace라서
+              // 탭을 여러 번 눌러도 뒤로 가기가 대시보드로 한 번에 돌아간다.
+              // (예전 별칭 ?locked=1도 이때 함께 지워진다)
+              onClick={() => setSearchParams({ status: tab.status }, { replace: true })}
               className={`rounded-md px-3 py-1.5 text-sm ${
                 status === tab.status
                   ? 'bg-primary font-medium text-on-primary'
