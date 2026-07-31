@@ -1,14 +1,14 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
-from app.constants import AssetKind, ProjectStatus, StageName, StageStatus, UserRole
-from app.core import events, pipeline, views
+from app.constants import AssetKind, AuditAction, AuditTarget, ProjectStatus, StageName, StageStatus, UserRole
+from app.core import audit, events, pipeline, views
 from app.core.worker import get_worker
 from app.db import get_db, raw_connection
 from app.providers.script.schema import build_draft
@@ -19,6 +19,14 @@ from app.utils.errors import AppError, Errors
 from app.utils.time import now_local
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+# 감사 로그 요약에 쓰는 단계 이름. 프론트의 STAGE_LABEL(web/src/lib/projects.ts)과 같은 값이다.
+_STAGE_LABEL = {
+    StageName.SCRIPT: "대본",
+    StageName.VOICE: "음성",
+    StageName.CAPTIONS: "자막",
+    StageName.RENDER: "영상",
+}
 
 
 async def _load_owned_project(conn, project_id: int, user_id: int) -> dict:
@@ -62,6 +70,7 @@ class CreateProjectRequest(BaseModel):
 @router.post("", status_code=201)
 async def create_project(
     body: CreateProjectRequest,
+    request: Request,
     user: dict = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -83,6 +92,11 @@ async def create_project(
     queued = False
     if body.auto_run:
         queued = await pipeline.queue_stage(db, stage_id, actor_id=user["id"])
+    await audit.record(
+        conn, action=AuditAction.PROJECT_CREATE, request=request, actor=user,
+        target_type=AuditTarget.PROJECT, target_id=project_id, target_label=body.title,
+        summary="프로젝트 생성 (자동 진행)" if body.auto_run else "프로젝트 생성",
+    )
     await db.commit()
     # 커밋 이후 conn 재획득 — 운영(Engine 바인딩)에서는 commit()이 raw 커넥션을 풀에
     # 반납하므로, 커밋 전에 얻은 conn을 그대로 쓰면 안 된다.
@@ -170,6 +184,7 @@ class ScriptEditRequest(BaseModel):
 async def save_script(
     project_id: int,
     body: ScriptEditRequest,
+    request: Request,
     user: dict = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -179,7 +194,7 @@ async def save_script(
     열어두면 음성·자막·영상도 편집 가능한 것처럼 읽힌다.
     """
     conn = await raw_connection(db)
-    await _load_owned_project(conn, project_id, user["id"])
+    project = await _load_owned_project(conn, project_id, user["id"])
     stage = await _load_stage(conn, project_id, StageName.SCRIPT)
 
     draft = build_draft(
@@ -196,6 +211,11 @@ async def save_script(
     )
     if saved is None:
         raise AppError(409, "STAGE_CONFLICT", "수정할 수 없는 상태입니다.")
+    await audit.record(
+        conn, action=AuditAction.SCRIPT_UPDATE, request=request, actor=user,
+        target_type=AuditTarget.PROJECT, target_id=project_id, target_label=project["title"],
+        summary="대본 수정",
+    )
     await db.commit()
     # 커밋 이후 conn 재획득 — 운영에서는 commit()이 raw 커넥션을 풀에 반납한다.
     conn = await raw_connection(db)
@@ -204,7 +224,8 @@ async def save_script(
 
 @router.delete("/{project_id}")
 async def delete_project(
-    project_id: int, user: dict = Depends(current_user), db: AsyncSession = Depends(get_db)
+    project_id: int, request: Request,
+    user: dict = Depends(current_user), db: AsyncSession = Depends(get_db)
 ):
     """프로젝트를 소프트 삭제한다. 파일은 그대로 두고 정리 잡이 보관 기간 후에 지운다.
 
@@ -212,7 +233,7 @@ async def delete_project(
     모두 소유자 전용이라, 삭제만 예외로 두면 그 경계가 무너진다.
     """
     conn = await raw_connection(db)
-    await _load_owned_project(conn, project_id, user["id"])
+    project = await _load_owned_project(conn, project_id, user["id"])
 
     # 워커가 손대는 중이면 막는다. 사용자가 몇 분 걸리는 작업 중에 삭제를 누르는 것은 대개
     # 실수이고, QUEUED인 채로 지우면 워커가 run_one 맨 앞에서 프로젝트를 못 찾아 조용히
@@ -225,20 +246,31 @@ async def delete_project(
 
     now = now_local()
     await queries.soft_delete_project(conn, id=project_id, deleted_at=now, deleted_by=user["id"])
+    await audit.record(
+        conn, action=AuditAction.PROJECT_DELETE, request=request, actor=user,
+        target_type=AuditTarget.PROJECT, target_id=project_id, target_label=project["title"],
+        summary="프로젝트 삭제 (30일 후 완전 삭제)",
+    )
     await db.commit()
     return {"id": project_id, "deleted_at": now}
 
 
 @router.post("/{project_id}/stages/{name}/run", status_code=202)
 async def run_stage(
-    project_id: int, name: str, user: dict = Depends(current_user), db: AsyncSession = Depends(get_db)
+    project_id: int, name: str, request: Request,
+    user: dict = Depends(current_user), db: AsyncSession = Depends(get_db)
 ):
     conn = await raw_connection(db)
-    await _load_owned_project(conn, project_id, user["id"])
+    project = await _load_owned_project(conn, project_id, user["id"])
     stage = await _load_stage(conn, project_id, name)
     if not await pipeline.queue_stage(db, stage["id"], actor_id=user["id"]):
         # 코드는 기존과 같은 STAGE_CONFLICT를 유지한다(Errors.conflict는 CONFLICT라 다르다).
         raise AppError(409, "STAGE_CONFLICT", "이미 실행 중이거나 검토 단계입니다.")
+    await audit.record(
+        conn, action=AuditAction.STAGE_RUN, request=request, actor=user,
+        target_type=AuditTarget.PROJECT, target_id=project_id, target_label=project["title"],
+        summary=f"{_STAGE_LABEL.get(name, name)} 단계 실행",
+    )
     await db.commit()
     # 커밋 이후 conn 재획득 — 운영에서는 commit()이 raw 커넥션을 풀에 반납한다.
     conn = await raw_connection(db)
@@ -254,11 +286,20 @@ async def run_stage(
 
 @router.post("/{project_id}/stages/{name}/approve")
 async def approve_stage(
-    project_id: int, name: str, user: dict = Depends(current_user), db: AsyncSession = Depends(get_db)
+    project_id: int, name: str, request: Request,
+    user: dict = Depends(current_user), db: AsyncSession = Depends(get_db)
 ):
     conn = await raw_connection(db)
     project = await _load_owned_project(conn, project_id, user["id"])
     stage = await _load_stage(conn, project_id, name)
+    # 기록을 approve_stage 앞에 두는 이유: approve_stage가 내부에서 commit하므로
+    # 이 행이 그 커밋에 함께 실린다. 뒤에 두면 커밋되지 않은 채 남아 사라진다.
+    # 승인이 실패해 예외로 끝나면 이 행도 함께 롤백된다 — 그게 맞는 동작이다.
+    await audit.record(
+        conn, action=AuditAction.STAGE_APPROVE, request=request, actor=user,
+        target_type=AuditTarget.PROJECT, target_id=project_id, target_label=project["title"],
+        summary=f"{_STAGE_LABEL.get(name, name)} 단계 승인",
+    )
     await pipeline.approve_stage(db, project, stage, actor_id=user["id"])  # 내부에서 commit
     # approve_stage가 이미 commit했다 — 커밋 이후 conn을 재획득해야 한다(운영에서는
     # commit()이 raw 커넥션을 풀에 반납한다).
@@ -268,11 +309,18 @@ async def approve_stage(
 
 @router.post("/{project_id}/stages/{name}/regenerate", status_code=202)
 async def regenerate_stage(
-    project_id: int, name: str, user: dict = Depends(current_user), db: AsyncSession = Depends(get_db)
+    project_id: int, name: str, request: Request,
+    user: dict = Depends(current_user), db: AsyncSession = Depends(get_db)
 ):
     conn = await raw_connection(db)
-    await _load_owned_project(conn, project_id, user["id"])
+    project = await _load_owned_project(conn, project_id, user["id"])
     stage = await _load_stage(conn, project_id, name)
+    # approve_stage와 같은 이유로 pipeline.regenerate_stage(내부 commit) 앞에 둔다.
+    await audit.record(
+        conn, action=AuditAction.STAGE_REGENERATE, request=request, actor=user,
+        target_type=AuditTarget.PROJECT, target_id=project_id, target_label=project["title"],
+        summary=f"{_STAGE_LABEL.get(name, name)} 단계 재생성",
+    )
     await pipeline.regenerate_stage(db, stage, actor_id=user["id"])  # 내부에서 commit
     # regenerate_stage가 이미 commit했다 — 커밋 이후 conn을 재획득해야 한다.
     conn = await raw_connection(db)

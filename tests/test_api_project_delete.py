@@ -229,3 +229,47 @@ async def test_delete_unknown_project_returns_404(client, db_session):
 
 async def test_delete_requires_auth(client):
     assert (await client.delete("/api/projects/1")).status_code == 401
+
+
+async def _project_with_running_stage(client, db_session) -> int:
+    """RUNNING 단계가 있는 프로젝트를 만든다 — 삭제가 409(PROJECT_BUSY)로 거절되는 준비 상태다."""
+    pid = await _create_project(client)
+    await _set_stage_status(db_session, pid, StageStatus.RUNNING)
+    return pid
+
+
+async def test_delete_is_recorded_with_title(client, db_session):
+    await _login(client, db_session, "delete-audit@example.com")
+    created = await client.post(
+        "/api/projects", json={"title": "여행 브이로그", "topic": "제주도"}
+    )
+    project_id = created.json()["project"]["id"]
+
+    resp = await client.delete(f"/api/projects/{project_id}")
+    assert resp.status_code == 200
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT * FROM audit_logs WHERE action = 'PROJECT_DELETE'")
+    assert len(rows) == 1
+    assert rows[0]["target_type"] == "PROJECT"
+    assert rows[0]["target_id"] == project_id
+    assert rows[0]["target_label"] == "여행 브이로그"
+    assert rows[0]["http_method"] == "DELETE"
+
+
+async def test_rejected_delete_is_not_recorded(client, db_session):
+    """409로 거절된 삭제는 아무 일도 하지 않았다 — 기록도 남지 않는다.
+
+    여기서는 rollback()을 쓰지 않는다: "커밋됐는가"가 아니라 "기록이 아예 없는가"를
+    보기 때문이다. rollback을 넣으면 회귀로 생긴 커밋 전 INSERT까지 지워버려 테스트가
+    항상 통과하게 된다.
+    """
+    await _login(client, db_session, "busy-audit@example.com")
+    project_id = await _project_with_running_stage(client, db_session)
+
+    resp = await client.delete(f"/api/projects/{project_id}")
+    assert resp.status_code == 409
+
+    conn = await raw_connection(db_session)
+    count = await conn.fetchval("SELECT COUNT(*) FROM audit_logs WHERE action = 'PROJECT_DELETE'")
+    assert count == 0

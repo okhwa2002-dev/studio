@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 
 from app.auth.security import hash_password
 from app.constants import NoticeStatus, UserStatus, YN
+from app.db import raw_connection
 from app.models.notice import Notice
 from app.models.notice_read import NoticeRead
 from app.models.user import User
@@ -229,3 +230,20 @@ async def test_draft_with_past_start_is_hidden_everywhere(client, db_session):
 
     resp = await client.post(f"/api/notices/{draft.id}/read")
     assert resp.status_code == 404
+
+
+async def test_marking_notice_as_read_is_not_recorded(client, db_session):
+    """읽음 표시는 목록을 열 때마다 발생한다 — 기록하면 다른 모든 행위를 덮는다."""
+    await _login_member(client, db_session, "member-read-audit@example.com")
+    notice = await _add_notice(db_session)
+
+    resp = await client.post(f"/api/notices/{notice.id}/read")
+    assert resp.status_code in (200, 201, 204)
+
+    # count == 0은 로그인까지 포함해 센다 — 이 파일은 client 픽스처로 로그인하므로
+    # LOGIN_SUCCESS 한 건이 잡힐 수 있다. 그건 이 테스트가 보려는 대상이 아니라 제외한다.
+    conn = await raw_connection(db_session)
+    count = await conn.fetchval(
+        "SELECT COUNT(*) FROM audit_logs WHERE action != 'LOGIN_SUCCESS'"
+    )
+    assert count == 0

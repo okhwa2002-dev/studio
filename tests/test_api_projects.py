@@ -179,3 +179,23 @@ async def test_create_uses_openai_when_configured(client, db_session):
     await _login(client, db_session, "provider-openai@example.com")
     body = (await client.post("/api/projects", json={"title": "t", "topic": "주제"})).json()
     assert body["stages"][0]["provider"] == "openai"
+
+
+async def test_create_and_stage_actions_are_recorded(client, db_session):
+    await _login(client, db_session, "project-audit@example.com")
+
+    created = await client.post("/api/projects", json={"title": "쇼츠 1", "topic": "요리"})
+    project_id = created.json()["project"]["id"]
+    await client.post(f"/api/projects/{project_id}/stages/script/run")
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT * FROM audit_logs ORDER BY id")
+    actions = [r["action"] for r in rows]
+    assert "PROJECT_CREATE" in actions
+    assert "STAGE_RUN" in actions
+
+    run_row = next(r for r in rows if r["action"] == "STAGE_RUN")
+    assert run_row["target_type"] == "PROJECT"
+    assert run_row["target_id"] == project_id
+    assert run_row["target_label"] == "쇼츠 1"
+    assert run_row["summary"] == "대본 단계 실행"

@@ -320,3 +320,20 @@ async def test_admin_cannot_edit_others_script(client, db_session):
 
 async def test_requires_auth(client):
     assert (await client.put("/api/projects/1/stages/script", json=_EDIT)).status_code == 401
+
+
+async def test_script_edit_is_recorded(client, db_session):
+    await _login(client, db_session, "se19-audit@example.com")
+    pid = await _project_in_review(client, db_session)
+
+    resp = await client.put(
+        f"/api/projects/{pid}/stages/script",
+        json={"title": "고친 제목", "hook": "", "scenes": [{"narration": "안녕", "on_screen": ""}]},
+    )
+    assert resp.status_code == 200
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT * FROM audit_logs WHERE action = 'SCRIPT_UPDATE'")
+    assert len(rows) == 1
+    assert rows[0]["target_type"] == "PROJECT"
+    assert rows[0]["summary"] == "대본 수정"
