@@ -1,11 +1,12 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_admin
 from app.auth.security import INITIAL_PASSWORD, hash_password
-from app.constants import UserStatus
+from app.constants import AuditAction, AuditTarget, UserStatus
+from app.core import audit
 from app.db import get_db, raw_connection
 from app.queries import queries
 from app.utils.errors import Errors
@@ -32,7 +33,13 @@ async def list_users(
 
 
 async def _set_status(
-    user_id: int, new_status: UserStatus, db: AsyncSession, admin: dict
+    user_id: int,
+    new_status: UserStatus,
+    db: AsyncSession,
+    admin: dict,
+    request: Request,
+    action: AuditAction,
+    summary: str,
 ) -> dict:
     conn = await raw_connection(db)
     row = await queries.find_by_id(conn, id=user_id)
@@ -49,6 +56,16 @@ async def _set_status(
         updated_at=now,
         updated_by=admin["id"],
     )
+    await audit.record(
+        conn,
+        action=action,
+        request=request,
+        actor=admin,
+        target_type=AuditTarget.USER,
+        target_id=user_id,
+        target_label=row["name"],
+        summary=summary,
+    )
     await db.commit()
     return {"id": user_id, "status": new_status}
 
@@ -56,24 +73,31 @@ async def _set_status(
 @router.post("/{user_id}/approve")
 async def approve_user(
     user_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
-    return await _set_status(user_id, UserStatus.ACTIVE, db, admin)
+    return await _set_status(
+        user_id, UserStatus.ACTIVE, db, admin, request, AuditAction.USER_APPROVE, "가입 승인"
+    )
 
 
 @router.post("/{user_id}/reject")
 async def reject_user(
     user_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
-    return await _set_status(user_id, UserStatus.REJECTED, db, admin)
+    return await _set_status(
+        user_id, UserStatus.REJECTED, db, admin, request, AuditAction.USER_REJECT, "가입 거절"
+    )
 
 
 @router.post("/{user_id}/unlock")
 async def unlock_user(
     user_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
@@ -86,6 +110,11 @@ async def unlock_user(
     await queries.unlock_user(
         conn, id=user_id, unlocked_at=now, updated_at=now, updated_by=admin["id"]
     )
+    await audit.record(
+        conn, action=AuditAction.USER_UNLOCK, request=request, actor=admin,
+        target_type=AuditTarget.USER, target_id=user_id, target_label=row["name"],
+        summary="계정 잠금 해제",
+    )
     await db.commit()
     return {"id": user_id, "unlocked_at": now}
 
@@ -93,6 +122,7 @@ async def unlock_user(
 @router.post("/{user_id}/reset-password")
 async def reset_password(
     user_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
@@ -129,6 +159,11 @@ async def reset_password(
     # 이미 로그인된 기기가 옛 토큰으로 계속 돌아다니지 않게 끊는다 — 초기화의 동기가
     # "계정이 탈취된 것 같다"인 경우 공격자 세션을 끊는 것이 목적이다.
     await queries.revoke_all_for_user(conn, user_id=user_id, revoked_at=now, updated_at=now)
+    await audit.record(
+        conn, action=AuditAction.USER_RESET_PASSWORD, request=request, actor=admin,
+        target_type=AuditTarget.USER, target_id=user_id, target_label=row["name"],
+        summary="비밀번호 초기화 — 전 세션 폐기",
+    )
     await db.commit()
     # 응답에 발급된 비밀번호를 담는다 — 지금은 고정값이지만 랜덤 발급으로 바뀌면
     # 서버만 아는 값이 된다. 화면이 처음부터 응답값을 보여주면 그때 여기만 고치면 된다.
@@ -140,6 +175,7 @@ async def reset_password(
 @router.post("/{user_id}/reset-failures")
 async def reset_failed_login(
     user_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
@@ -151,6 +187,11 @@ async def reset_failed_login(
     now = now_local()
     await queries.admin_reset_failed_login(
         conn, id=user_id, updated_at=now, updated_by=admin["id"]
+    )
+    await audit.record(
+        conn, action=AuditAction.USER_RESET_FAILURES, request=request, actor=admin,
+        target_type=AuditTarget.USER, target_id=user_id, target_label=row["name"],
+        summary="로그인 실패 횟수 초기화",
     )
     await db.commit()
     return {"id": user_id, "failed_login_count": 0}

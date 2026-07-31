@@ -203,3 +203,19 @@ async def test_reset_password_rejects_non_admin(client, db_session):
 
     resp = await client.post(f"/api/admin/users/{victim.id}/reset-password")
     assert resp.status_code == 403
+
+
+async def test_reset_password_is_recorded(client, db_session):
+    await _login_admin(client, db_session, "admin-reset-audit@example.com")
+    target = await _add_member(db_session, "victim-audit@example.com")
+
+    resp = await client.post(f"/api/admin/users/{target.id}/reset-password")
+    assert resp.status_code == 200
+
+    from app.db import raw_connection
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT * FROM audit_logs WHERE action = 'USER_RESET_PASSWORD'")
+    assert len(rows) == 1
+    assert rows[0]["target_id"] == target.id
+    assert rows[0]["summary"] == "비밀번호 초기화 — 전 세션 폐기"

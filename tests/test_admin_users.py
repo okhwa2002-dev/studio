@@ -1,5 +1,6 @@
 from app.auth.security import hash_password
 from app.constants import UserRole, UserStatus
+from app.db import raw_connection
 from app.models.user import User
 from app.utils.time import now_local
 
@@ -152,3 +153,63 @@ async def test_admin_list_includes_name(client, db_session):
     assert resp.status_code == 200
     listed = [u for u in resp.json() if u["email"] == "listed@example.com"]
     assert listed and listed[0]["name"] == "박민수"
+
+
+async def _audit(db_session, action: str):
+    conn = await raw_connection(db_session)
+    return await conn.fetch("SELECT * FROM audit_logs WHERE action = $1", action)
+
+
+async def test_approve_is_recorded_with_target_name(client, db_session):
+    await _login_admin(client, db_session, "admin-audit@example.com")
+    target = User(
+        email="pending-audit@example.com",
+        password_hash=hash_password("pw12345"),
+        status=UserStatus.PENDING,
+        name="감사대상",
+    )
+    db_session.add(target)
+    await db_session.commit()
+    await db_session.refresh(target)
+
+    resp = await client.post(f"/api/admin/users/{target.id}/approve")
+    assert resp.status_code == 200
+
+    rows = await _audit(db_session, "USER_APPROVE")
+    assert len(rows) == 1
+    assert rows[0]["target_type"] == "USER"
+    assert rows[0]["target_id"] == target.id
+    assert rows[0]["target_label"] == target.name
+    assert rows[0]["actor_email"] == "admin-audit@example.com"
+    assert rows[0]["http_path"] == f"/api/admin/users/{target.id}/approve"
+
+
+async def test_reject_unlock_and_reset_failures_are_recorded(client, db_session):
+    await _login_admin(client, db_session, "admin-audit2@example.com")
+    target = User(
+        email="target-audit@example.com",
+        password_hash=hash_password("pw12345"),
+        status=UserStatus.PENDING,
+    )
+    db_session.add(target)
+    await db_session.commit()
+    await db_session.refresh(target)
+
+    await client.post(f"/api/admin/users/{target.id}/reject")
+    await client.post(f"/api/admin/users/{target.id}/unlock")
+    await client.post(f"/api/admin/users/{target.id}/reset-failures")
+
+    assert len(await _audit(db_session, "USER_REJECT")) == 1
+    assert len(await _audit(db_session, "USER_UNLOCK")) == 1
+    assert len(await _audit(db_session, "USER_RESET_FAILURES")) == 1
+
+
+async def test_missing_user_is_not_recorded(client, db_session):
+    """404로 끝난 요청은 아무 일도 하지 않았다 — 기록도 남지 않는다."""
+    await _login_admin(client, db_session, "admin-audit3@example.com")
+
+    resp = await client.post("/api/admin/users/999999/approve")
+    assert resp.status_code == 404
+
+    await db_session.rollback()
+    assert len(await _audit(db_session, "USER_APPROVE")) == 0
