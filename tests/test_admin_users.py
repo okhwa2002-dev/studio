@@ -205,11 +205,15 @@ async def test_reject_unlock_and_reset_failures_are_recorded(client, db_session)
 
 
 async def test_missing_user_is_not_recorded(client, db_session):
-    """404로 끝난 요청은 아무 일도 하지 않았다 — 기록도 남지 않는다."""
+    """404로 끝난 요청은 아무 일도 하지 않았다 — 기록도 남지 않는다.
+
+    다른 커밋 검증 테스트와 달리 여기서는 rollback()을 쓰지 않는다: 여기서 보려는 것은
+    "커밋됐는가"가 아니라 "기록이 아예 없는가"이다. record 호출이 회귀로 존재 확인보다
+    앞으로 옮겨지면 INSERT는 커밋 전이라도 같은 세션에서 곧바로 조회된다 — rollback을
+    넣으면 그 증거(커밋 안 된 INSERT)를 테스트 스스로 지워버려 항상 통과하게 된다.
+    """
     await _login_admin(client, db_session, "admin-audit3@example.com")
 
     resp = await client.post("/api/admin/users/999999/approve")
     assert resp.status_code == 404
-
-    await db_session.rollback()
     assert len(await _audit(db_session, "USER_APPROVE")) == 0
