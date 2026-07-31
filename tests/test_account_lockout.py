@@ -55,6 +55,33 @@ async def test_locked_account_correct_password_returns_423(client, db_session):
     assert "access_token" not in resp.cookies
 
 
+async def test_locked_account_correct_password_login_failure_is_committed(client, db_session):
+    """423로 끝나는 경로도 커밋에 도달하지 않는다 — record_failure가 없으면 기록이 사라진다.
+
+    잠금을 만드는 준비는 test_locked_account_correct_password_returns_423과 같은 방식
+    (5회 오답으로 잠금)을 쓴다. 롤백 후에도 남아 있는지가 실제로 커밋됐는지를
+    가르는 유일한 신호다(conftest의 SAVEPOINT 격리 때문에 별도 세션으로는 확인 불가).
+    """
+    await _active(db_session, "locked423-audit@example.com")
+    for _ in range(5):
+        await client.post(
+            "/api/auth/login", json={"email": "locked423-audit@example.com", "password": "wrong"}
+        )
+
+    resp = await client.post(
+        "/api/auth/login", json={"email": "locked423-audit@example.com", "password": "pw12345"}
+    )
+    assert resp.status_code == 423
+
+    await db_session.rollback()
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch(
+        "SELECT * FROM audit_logs WHERE action = 'LOGIN_FAILURE' AND summary = '잠긴 계정'"
+    )
+    assert len(rows) == 1
+
+
 async def test_locked_account_wrong_password_still_401(client, db_session):
     # 잠긴 계정이라도 오답에는 통일 401 — 공격자에게 잠김이 드러나지 않는다.
     await _active(db_session, "lockedwrong@example.com")
