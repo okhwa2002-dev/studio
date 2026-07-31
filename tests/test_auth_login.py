@@ -1,6 +1,7 @@
 import app.auth.router as auth_router
 from app.auth.security import hash_password
 from app.constants import UserStatus
+from app.db import raw_connection
 from app.models.user import User
 
 
@@ -87,3 +88,84 @@ async def test_login_unknown_email_still_runs_password_verification(client, monk
     assert resp.status_code == 401
     assert len(calls) == 1
     assert calls[0][1] == auth_router._DUMMY_PASSWORD_HASH
+
+
+async def _audit_rows(db_session, action: str | None = None):
+    conn = await raw_connection(db_session)
+    if action is None:
+        return await conn.fetch("SELECT * FROM audit_logs ORDER BY id")
+    return await conn.fetch("SELECT * FROM audit_logs WHERE action = $1 ORDER BY id", action)
+
+
+async def test_successful_login_is_recorded(client, db_session):
+    await _create_user(db_session, "audit-ok@example.com", "pw12345")
+
+    resp = await client.post(
+        "/api/auth/login", json={"email": "audit-ok@example.com", "password": "pw12345"}
+    )
+    assert resp.status_code == 200
+
+    rows = await _audit_rows(db_session, "LOGIN_SUCCESS")
+    assert len(rows) == 1
+    assert rows[0]["actor_email"] == "audit-ok@example.com"
+    assert rows[0]["success_yn"] == "Y"
+    assert rows[0]["http_path"] == "/api/auth/login"
+
+
+async def test_unknown_email_is_recorded_without_actor_id(client, db_session):
+    resp = await client.post(
+        "/api/auth/login", json={"email": "ghost@example.com", "password": "whatever"}
+    )
+    assert resp.status_code == 401
+
+    rows = await _audit_rows(db_session, "LOGIN_FAILURE")
+    assert len(rows) == 1
+    assert rows[0]["actor_id"] is None
+    assert rows[0]["actor_email"] == "ghost@example.com"
+    assert rows[0]["summary"] == "존재하지 않는 계정"
+
+
+async def test_unknown_email_failure_is_committed(client, db_session):
+    """401로 끝나는 경로는 커밋에 도달하지 않는다 — record_failure가 없으면 기록이 사라진다.
+
+    conftest의 SAVEPOINT 격리 때문에 별도 세션으로는 확인할 수 없다. 롤백 후에도
+    남아 있는지가 실제로 커밋됐는지를 가르는 유일한 신호다.
+    """
+    resp = await client.post(
+        "/api/auth/login", json={"email": "ghost2@example.com", "password": "whatever"}
+    )
+    assert resp.status_code == 401
+
+    await db_session.rollback()
+
+    rows = await _audit_rows(db_session, "LOGIN_FAILURE")
+    assert len(rows) == 1
+
+
+async def test_wrong_password_is_recorded_with_actor(client, db_session):
+    user = await _create_user(db_session, "audit-bad@example.com", "pw12345")
+
+    resp = await client.post(
+        "/api/auth/login", json={"email": "audit-bad@example.com", "password": "wrong-one"}
+    )
+    assert resp.status_code == 401
+
+    rows = await _audit_rows(db_session, "LOGIN_FAILURE")
+    assert len(rows) == 1
+    assert rows[0]["actor_id"] == user.id
+    assert rows[0]["summary"] == "비밀번호 불일치"
+
+
+async def test_disabled_account_login_is_recorded(client, db_session):
+    await _create_user(db_session, "audit-pending@example.com", "pw12345", status=UserStatus.PENDING)
+
+    resp = await client.post(
+        "/api/auth/login", json={"email": "audit-pending@example.com", "password": "pw12345"}
+    )
+    assert resp.status_code == 403
+
+    await db_session.rollback()
+
+    rows = await _audit_rows(db_session, "LOGIN_FAILURE")
+    assert len(rows) == 1
+    assert rows[0]["summary"] == "승인 대기·비활성 계정"

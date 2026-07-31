@@ -127,3 +127,22 @@ async def test_unlock_rejects_non_admin(client, db_session):
     await client.post("/api/auth/login", json={"email": "unlockmember@example.com", "password": "pw12345"})
     resp = await client.post("/api/admin/users/1/unlock")
     assert resp.status_code == 403
+
+
+async def test_lock_is_recorded_once_at_the_threshold(client, db_session):
+    """잠기는 순간에만 ACCOUNT_LOCKED가 남고, 그 뒤 시도는 LOGIN_FAILURE만 쌓인다."""
+    await _active(db_session, "lock-audit@example.com")
+    conn = await raw_connection(db_session)
+
+    # 기본 임계치는 conftest가 FAILED_LOGIN_LIMIT=5로 고정한다.
+    for _ in range(6):
+        await client.post(
+            "/api/auth/login", json={"email": "lock-audit@example.com", "password": "wrong"}
+        )
+
+    locked = await conn.fetch("SELECT * FROM audit_logs WHERE action = 'ACCOUNT_LOCKED'")
+    failures = await conn.fetch("SELECT * FROM audit_logs WHERE action = 'LOGIN_FAILURE'")
+    assert len(locked) == 1
+    assert locked[0]["summary"] == "연속 로그인 실패 5회로 잠김"
+    assert locked[0]["target_type"] == "USER"
+    assert len(failures) == 6

@@ -16,7 +16,8 @@ from app.auth.security import (
     verify_password,
 )
 from app.config import get_settings
-from app.constants import UserRole, UserStatus
+from app.constants import AuditAction, AuditTarget, UserRole, UserStatus
+from app.core import audit
 from app.db import get_db, raw_connection
 from app.queries import queries
 from app.runtime_settings import get_runtime_settings
@@ -56,7 +57,7 @@ async def policy(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/register", status_code=201)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(body: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
     email = body.email.strip().lower()
     # 이름은 표시용이라 lower()하지 않는다(email과 다르다). 공백만 입력은 거부.
     name = body.name.strip()
@@ -96,6 +97,16 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
         # 등록된 경우(동시 요청/빠른 중복 제출). DB 유니크 제약이 잡아준 것을
         # 500이 아닌 409 CONFLICT로 변환한다.
         raise Errors.conflict("이미 등록된 이메일입니다.")
+    await audit.record(
+        conn,
+        action=AuditAction.REGISTER,
+        request=request,
+        actor={"id": user_id, "email": email, "name": name},
+        target_type=AuditTarget.USER,
+        target_id=user_id,
+        target_label=name,
+        summary="가입 (자동 승인)" if status == UserStatus.ACTIVE else "가입 신청 (승인 대기)",
+    )
     await db.commit()
     return {"id": user_id, "status": status}
 
@@ -126,7 +137,12 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
 
 
 @router.post("/login")
-async def login(body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def login(
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     conn = await raw_connection(db)
     email = body.email.strip().lower()
     row = await queries.find_by_email(conn, email=email)
@@ -134,6 +150,17 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
         # 더미 해시로라도 verify_password를 호출해 존재하는 계정과 동일한 연산 비용을 지불한다
         # (타이밍 사이드채널 방지). 셀 계정이 없으므로 카운트 없음.
         verify_password(body.password, _DUMMY_PASSWORD_HASH)
+        # 없는 이메일도 문자열 그대로 남긴다 — 계정 열거 공격은 "없는 이메일 수백 건
+        # 시도"라는 모양으로만 드러나므로, 이 값이 없으면 패턴 자체가 보이지 않는다.
+        # record_failure인 이유: 아래 raise로 끝나 커밋에 도달하지 못한다.
+        await audit.record_failure(
+            db,
+            action=AuditAction.LOGIN_FAILURE,
+            request=request,
+            actor_email=email,
+            success=False,
+            summary="존재하지 않는 계정",
+        )
         raise Errors.unauthorized("이메일 또는 비밀번호가 올바르지 않습니다.")
 
     now = now_local()
@@ -149,14 +176,52 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
         await queries.record_failed_login(
             conn, id=row["id"], failed_login_count=new_count, locked_at=new_locked_at, updated_at=now
         )
+        # 이 경로에는 아래 db.commit()이 있으므로 record로 충분하다.
+        await audit.record(
+            conn,
+            action=AuditAction.LOGIN_FAILURE,
+            request=request,
+            actor=row,
+            success=False,
+            summary="비밀번호 불일치",
+        )
+        # 잠기는 순간에만 한 번 남긴다. 이미 잠긴 계정에 계속 시도하면 LOGIN_FAILURE만 쌓인다.
+        if row["locked_at"] is None and new_locked_at is not None:
+            await audit.record(
+                conn,
+                action=AuditAction.ACCOUNT_LOCKED,
+                request=request,
+                actor=row,
+                target_type=AuditTarget.USER,
+                target_id=row["id"],
+                target_label=row["name"],
+                success=False,
+                summary=f"연속 로그인 실패 {new_count}회로 잠김",
+            )
         await db.commit()
         # 오답은 잠김 여부와 무관하게 항상 통일 401. 공격자에게 잠김을 드러내지 않는다.
         raise Errors.unauthorized("이메일 또는 비밀번호가 올바르지 않습니다.")
 
     # 비밀번호는 맞음. 잠김은 status와 별개로 먼저 막는다(진짜 사용자에게만 423).
     if row["locked_at"] is not None:
+        await audit.record_failure(
+            db,
+            action=AuditAction.LOGIN_FAILURE,
+            request=request,
+            actor=row,
+            success=False,
+            summary="잠긴 계정",
+        )
         raise Errors.locked()
     if row["status"] != UserStatus.ACTIVE:
+        await audit.record_failure(
+            db,
+            action=AuditAction.LOGIN_FAILURE,
+            request=request,
+            actor=row,
+            success=False,
+            summary="승인 대기·비활성 계정",
+        )
         raise Errors.forbidden("관리자 승인 대기 중이거나 비활성화된 계정입니다.")
 
     if row["failed_login_count"] > 0:
@@ -172,6 +237,7 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
         created_at=now,
         updated_at=now,
     )
+    await audit.record(conn, action=AuditAction.LOGIN_SUCCESS, request=request, actor=row)
     await db.commit()
 
     _set_auth_cookies(response, access_token, refresh_token)
@@ -203,6 +269,20 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
     if row["revoked_at"] is not None:
         # 이미 회전되어 폐기된 토큰이 재사용됨 → 탈취 의심, 해당 사용자의 모든 세션 폐기
         await queries.revoke_all_for_user(conn, user_id=row["user_id"], revoked_at=now, updated_at=now)
+        # 정상 갱신은 기록하지 않는다(몇 분마다 발생해 목록을 덮는다). 이 분기만 남긴다 —
+        # 감사 로그가 존재하는 이유에 가장 가까운 사건이다.
+        user_row = await queries.find_by_id(conn, id=row["user_id"])
+        await audit.record(
+            conn,
+            action=AuditAction.TOKEN_REUSE_DETECTED,
+            request=request,
+            actor=user_row,
+            target_type=AuditTarget.USER,
+            target_id=row["user_id"],
+            target_label=user_row["name"] if user_row is not None else None,
+            success=False,
+            summary="폐기된 리프레시 토큰 재사용 — 전 세션 폐기",
+        )
         await db.commit()
         raise Errors.unauthorized("토큰이 재사용되어 모든 세션을 종료했습니다. 다시 로그인해주세요.")
     if row["expires_at"] < now:
@@ -238,6 +318,11 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
         if row is not None and row["revoked_at"] is None:
             now = now_local()
             await queries.revoke_by_id(conn, id=row["id"], revoked_at=now, updated_at=now)
+            # 토큰 행에는 이메일·이름이 없다. 스냅샷을 채우려면 사용자를 한 번 읽어야 한다.
+            user_row = await queries.find_by_id(conn, id=row["user_id"])
+            await audit.record(
+                conn, action=AuditAction.LOGOUT, request=request, actor=user_row
+            )
             await db.commit()
 
     response.delete_cookie("access_token")
@@ -268,6 +353,7 @@ class ChangePasswordRequest(BaseModel):
 @router.post("/change-password")
 async def change_password(
     body: ChangePasswordRequest,
+    request: Request,
     response: Response,
     user: dict = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -302,6 +388,16 @@ async def change_password(
         expires_at=now + timedelta(days=REFRESH_TOKEN_DAYS),
         created_at=now,
         updated_at=now,
+    )
+    await audit.record(
+        conn,
+        action=AuditAction.PASSWORD_CHANGE,
+        request=request,
+        actor=user,
+        target_type=AuditTarget.USER,
+        target_id=user["id"],
+        target_label=user["name"],
+        summary="비밀번호 변경 — 다른 기기 세션 폐기",
     )
     await db.commit()
 

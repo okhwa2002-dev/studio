@@ -1,4 +1,5 @@
 from app.constants import UserStatus
+from app.db import raw_connection
 
 
 async def test_register_creates_pending_user(client):
@@ -99,3 +100,18 @@ async def test_register_accepts_50_char_name(client):
         json={"email": "max@example.com", "password": "pw123456", "name": "가" * 50},
     )
     assert resp.status_code == 201
+
+
+async def test_register_is_recorded(client, db_session):
+    resp = await client.post(
+        "/api/auth/register",
+        json={"email": "new-audit@example.com", "password": "pw123456", "name": "새사람"},
+    )
+    assert resp.status_code == 201
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT * FROM audit_logs WHERE action = 'REGISTER'")
+    assert len(rows) == 1
+    assert rows[0]["actor_email"] == "new-audit@example.com"
+    assert rows[0]["target_label"] == "새사람"
+    assert rows[0]["summary"] == "가입 신청 (승인 대기)"

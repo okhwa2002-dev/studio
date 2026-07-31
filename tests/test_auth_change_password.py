@@ -79,3 +79,17 @@ async def test_change_password_revokes_other_sessions(client, db_session):
     conn = await raw_connection(db_session)
     row = await queries.find_by_token_hash(conn, token_hash=hash_refresh_token(token_a))
     assert row is not None and row["revoked_at"] is not None
+
+
+async def test_password_change_is_recorded(client, db_session):
+    await _register_and_login(client, db_session, "pwchange-audit@example.com")
+
+    resp = await client.post(
+        "/api/auth/change-password",
+        json={"current_password": _PW, "new_password": "newpw12345"},
+    )
+    assert resp.status_code == 200
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT * FROM audit_logs WHERE action = 'PASSWORD_CHANGE'")
+    assert len(rows) == 1

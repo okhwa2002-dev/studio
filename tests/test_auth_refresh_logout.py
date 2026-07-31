@@ -1,5 +1,6 @@
 from app.auth.security import hash_password
 from app.constants import UserStatus
+from app.db import raw_connection
 from app.models.user import User
 
 
@@ -58,3 +59,44 @@ async def test_logout_clears_cookies_and_revokes_refresh_token(client, db_sessio
     client.cookies.set("refresh_token", refresh_token)
     reuse_resp = await client.post("/api/auth/refresh")
     assert reuse_resp.status_code == 401
+
+
+async def test_logout_is_recorded(client, db_session):
+    await _login(client, db_session, "logout-audit@example.com")
+
+    resp = await client.post("/api/auth/logout")
+    assert resp.status_code == 200
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT * FROM audit_logs WHERE action = 'LOGOUT'")
+    assert len(rows) == 1
+
+
+async def test_normal_refresh_is_not_recorded(client, db_session):
+    """정상 갱신은 몇 분마다 일어난다 — 기록하면 목록을 덮는다."""
+    await _login(client, db_session, "refresh-audit@example.com")
+
+    resp = await client.post("/api/auth/refresh")
+    assert resp.status_code == 200
+
+    conn = await raw_connection(db_session)
+    count = await conn.fetchval(
+        "SELECT COUNT(*) FROM audit_logs WHERE action IN ('TOKEN_REUSE_DETECTED', 'LOGOUT')"
+    )
+    assert count == 0
+
+
+async def test_token_reuse_is_recorded(client, db_session):
+    """폐기된 토큰의 재사용은 탈취 신호다 — 반드시 남는다."""
+    await _login(client, db_session, "reuse-audit@example.com")
+    old_cookie = client.cookies.get("refresh_token")
+
+    await client.post("/api/auth/refresh")            # 회전 → 옛 토큰 폐기
+    client.cookies.set("refresh_token", old_cookie)   # 폐기된 토큰을 다시 제시
+    resp = await client.post("/api/auth/refresh")
+    assert resp.status_code == 401
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT * FROM audit_logs WHERE action = 'TOKEN_REUSE_DETECTED'")
+    assert len(rows) == 1
+    assert rows[0]["success_yn"] == "N"
