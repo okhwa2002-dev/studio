@@ -108,10 +108,14 @@ async def update_faq(
         updated_at=now_local(),
         updated_by=admin["id"],
     )
+    # target_label은 **변경 전** 질문이다. 관리자가 감사 로그를 여는 전형적인 이유가
+    # "그 항목을 누가 바꿨지"인데, 변경 후 값을 넣으면 기억하고 있는 옛 질문으로
+    # 검색해도 아무것도 나오지 않는다. 변경 후 값은 summary에 넣어 검색되게 한다
+    # (조회 API의 q가 summary도 훑는다).
     await audit.record(
         conn, action=AuditAction.FAQ_UPDATE, request=request, actor=admin,
-        target_type=AuditTarget.FAQ, target_id=faq_id, target_label=body.question,
-        summary="FAQ 수정",
+        target_type=AuditTarget.FAQ, target_id=faq_id, target_label=row["question"],
+        summary=f"FAQ 수정 → {body.question}",
     )
     await db.commit()
     return {"id": faq_id}

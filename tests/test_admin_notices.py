@@ -226,4 +226,8 @@ async def test_notice_lifecycle_is_recorded(client, db_session):
     assert [r["action"] for r in rows] == ["NOTICE_CREATE", "NOTICE_UPDATE", "NOTICE_DELETE"]
     assert rows[0]["target_id"] == notice_id
     assert rows[0]["target_label"] == "점검 공지"
-    assert rows[1]["target_label"] == "점검 공지(수정)"
+    # 수정 기록의 라벨은 **변경 전** 제목이다 — 관리자가 기억하는 옛 제목으로 검색해서
+    # "누가 바꿨는지"를 찾을 수 있어야 한다. 변경 후 제목은 summary에 남아 함께 검색된다.
+    assert rows[1]["target_label"] == "점검 공지"
+    assert "점검 공지(수정)" in rows[1]["summary"]
+    assert rows[2]["target_label"] == "점검 공지(수정)"

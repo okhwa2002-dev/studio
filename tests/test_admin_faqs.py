@@ -177,3 +177,8 @@ async def test_faq_lifecycle_is_recorded(client, db_session):
     rows = await conn.fetch("SELECT * FROM audit_logs WHERE target_type = 'FAQ' ORDER BY id")
     assert [r["action"] for r in rows] == ["FAQ_CREATE", "FAQ_UPDATE", "FAQ_DELETE"]
     assert rows[0]["target_label"] == "환불 되나요?"
+    # 수정 기록의 라벨은 **변경 전** 질문이다(공지와 같은 규칙). 변경 후 질문은
+    # summary에 남아 조회 API의 q로 함께 검색된다.
+    assert rows[1]["target_label"] == "환불 되나요?"
+    assert "환불 규정은?" in rows[1]["summary"]
+    assert rows[2]["target_label"] == "환불 규정은?"

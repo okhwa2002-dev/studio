@@ -116,7 +116,7 @@ async def update_notice(
     admin: dict = Depends(require_admin),
 ):
     conn = await raw_connection(db)
-    await _load_notice(conn, notice_id)
+    row = await _load_notice(conn, notice_id)  # 404 검사 + 감사 기록에 쓸 변경 전 제목
 
     starts_at, ends_at = _resolve_period(body)
     now = now_local()
@@ -133,10 +133,15 @@ async def update_notice(
         updated_at=now,
         updated_by=admin["id"],
     )
+    # target_label은 **변경 전** 제목이다. 관리자가 감사 로그를 여는 전형적인 이유가
+    # "그 공지를 누가 바꿨지"인데, 변경 후 값을 넣으면 기억하고 있는 옛 제목으로
+    # 검색해도 아무것도 나오지 않는다. 변경 후 값은 summary에 넣어 검색되게 한다
+    # (조회 API의 q가 summary도 훑는다). FAQ 수정도 같은 규칙이다.
+    published = body.status == NoticeStatus.PUBLISHED
     await audit.record(
         conn, action=AuditAction.NOTICE_UPDATE, request=request, actor=admin,
-        target_type=AuditTarget.NOTICE, target_id=notice_id, target_label=body.title,
-        summary="공지 수정 (게시)" if body.status == NoticeStatus.PUBLISHED else "공지 수정 (임시저장)",
+        target_type=AuditTarget.NOTICE, target_id=notice_id, target_label=row["title"],
+        summary=f"{'공지 수정 (게시)' if published else '공지 수정 (임시저장)'} → {body.title}",
     )
     await db.commit()
     return {"id": notice_id}
