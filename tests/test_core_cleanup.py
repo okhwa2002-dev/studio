@@ -10,9 +10,10 @@ from datetime import timedelta
 import pytest
 
 from app.auth.security import hash_password
-from app.constants import ProjectStatus, StageName, StageStatus, UserRole, UserStatus
+from app.constants import AuditAction, ProjectStatus, StageName, StageStatus, UserRole, UserStatus
 from app.core import cleanup
 from app.db import raw_connection
+from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.queries import queries
 from app.utils import storage
@@ -234,3 +235,26 @@ async def test_run_once_is_idempotent(db_session, storage_root):
 
 async def test_run_once_on_empty_db_does_nothing(db_session):
     await cleanup.run_once(_factory(db_session))
+
+
+# ─── 감사 로그 보관 정리 ───
+
+
+async def test_audit_logs_older_than_retention_are_purged(db_session):
+    old = AuditLog(
+        action=AuditAction.LOGIN_SUCCESS,
+        created_at=now_local() - timedelta(days=cleanup.AUDIT_RETENTION_DAYS + 1),
+    )
+    fresh = AuditLog(
+        action=AuditAction.LOGIN_SUCCESS,
+        created_at=now_local() - timedelta(days=cleanup.AUDIT_RETENTION_DAYS - 1),
+    )
+    db_session.add(old)
+    db_session.add(fresh)
+    await db_session.commit()
+
+    await cleanup.run_once(_factory(db_session))
+
+    conn = await raw_connection(db_session)
+    remaining = await conn.fetch("SELECT id FROM audit_logs")
+    assert [r["id"] for r in remaining] == [fresh.id]

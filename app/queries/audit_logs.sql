@@ -51,3 +51,7 @@ WHERE created_at >= :from_at
        OR actor_name ILIKE :like
        OR target_label ILIKE :like
        OR summary ILIKE :like);
+
+-- name: delete_old_audit_logs!
+-- 보관 기간이 지난 기록을 지운다. ix_audit_logs_created_at_id를 그대로 쓴다.
+DELETE FROM audit_logs WHERE created_at < :before;

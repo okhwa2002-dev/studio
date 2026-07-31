@@ -18,6 +18,11 @@ PURGE_INTERVAL_SEC = 24 * 60 * 60
 # 관리자가 이 값을 바꿀 이유가 아직 없다. 필요해지면 runtime_settings로 올린다.
 PROJECT_RETENTION_DAYS = 30
 
+# 감사 로그 보관 기간. PROJECT_RETENTION_DAYS와 같은 이유로 소스 상수다 —
+# .env로 빼면 기동 시 범위 검증(check_env_defaults)까지 붙어야 하고, 관리자가
+# 이 값을 바꿀 이유가 아직 없다. 필요해지면 runtime_settings로 올린다.
+AUDIT_RETENTION_DAYS = 90
+
 
 async def _purge_expired_tokens(session) -> None:
     """만료된 refresh token을 지운다.
@@ -59,6 +64,18 @@ async def _purge_project(session, project_id: int) -> None:
     await session.commit()
 
 
+async def _purge_old_audit_logs(session) -> None:
+    """보관 기간이 지난 활동 기록을 지운다.
+
+    감사 로그는 append-only라 지우는 경로가 여기 하나뿐이다. 멱등한 DELETE이므로
+    같은 잡이 두 번 돌아도, 인스턴스가 둘이어도 문제가 없다.
+    """
+    conn = await raw_connection(session)
+    before = now_local() - timedelta(days=AUDIT_RETENTION_DAYS)
+    await queries.delete_old_audit_logs(conn, before=before)
+    await session.commit()
+
+
 async def run_once(session_factory=None) -> None:
     """정리를 한 번 수행한다.
 
@@ -69,6 +86,9 @@ async def run_once(session_factory=None) -> None:
 
     async with factory() as session:
         await _purge_expired_tokens(session)
+
+    async with factory() as session:
+        await _purge_old_audit_logs(session)
 
     async with factory() as session:
         conn = await raw_connection(session)
