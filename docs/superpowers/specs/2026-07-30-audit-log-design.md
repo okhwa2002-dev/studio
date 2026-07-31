@@ -75,11 +75,13 @@
 
 템플릿은 "어떤 종류의 API인가"만 알려주는데 그것은 `action` 열이 더 정확하게 말해준다. 실제 경로를 남겨야 같은 시각의 `studio.log`에서 그 경로를 찾아 요청 전후의 워커 로그·SQL 로그까지 이어볼 수 있다 — 감사 로그가 서버 로그로 넘어가는 다리 역할이다.
 
-NULL을 허용하는 이유는 나중에 요청 밖에서 남길 사건(정리 잡의 자동 삭제 등)을 위해서다. 지금은 모든 기록이 요청 안에서 일어난다.
+NULL을 허용하는 이유는 요청 밖에서 남길 사건을 위해서다. 실제로 둘이 있다 — 워커의 자동 승인(`STAGE_APPROVE`)과 정리 잡의 완전 삭제(`PROJECT_PURGE`). 두 경우 `http_method`·`http_path`·`actor_ip`가 NULL이고, `PROJECT_PURGE`는 `actor_id`·`actor_email`·`actor_name`까지 NULL이다(3-5).
 
 ## 3. 기록할 행위
 
-`app/constants.py`에 `AuditAction` StrEnum을 추가한다. 아래 다섯 표를 합쳐 25종이고, 이 목록이 곧 화면 필터의 선택지다.
+`app/constants.py`에 `AuditAction` StrEnum을 추가한다. 아래 다섯 표를 합쳐 26종이고, 이 목록이 곧 화면 필터의 선택지다.
+
+행위의 주체는 사람만이 아니다. **워커의 자동 승인과 정리 잡의 완전 삭제도 기록한다** — 감사 로그는 "기록이 없다 = 일어나지 않았다"가 성립해야 값어치가 있는데, 사람이 아닌 주체의 행위를 빼면 그 전제가 무너진다(3-5의 `STAGE_APPROVE`·`PROJECT_PURGE` 참고). 이 두 경우는 요청 밖에서 일어나므로 `http_*`·`actor_ip`가 NULL이다(2-4).
 
 ### 3-1. 인증 (`app/auth/router.py`)
 
@@ -118,11 +120,13 @@ NULL을 허용하는 이유는 나중에 요청 밖에서 남길 사건(정리 �
 | 코드 | 대상 | target_label | summary |
 |---|---|---|---|
 | `NOTICE_CREATE` | NOTICE / id | 공지 제목 | `공지 등록 (게시)` · `공지 등록 (임시저장)` |
-| `NOTICE_UPDATE` | NOTICE / id | 공지 제목 | `공지 수정 (게시)` 등 |
+| `NOTICE_UPDATE` | NOTICE / id | **변경 전** 제목 | `공지 수정 (게시) → 새 제목` |
 | `NOTICE_DELETE` | NOTICE / id | 공지 제목 | `공지 삭제` |
 | `FAQ_CREATE` | FAQ / id | 질문 | `FAQ 등록 (게시)` 등 |
-| `FAQ_UPDATE` | FAQ / id | 질문 | `FAQ 수정` |
+| `FAQ_UPDATE` | FAQ / id | **변경 전** 질문 | `FAQ 수정 → 새 질문` |
 | `FAQ_DELETE` | FAQ / id | 질문 | `FAQ 삭제` |
+
+**수정 기록의 `target_label`은 변경 전 값이다.** 관리자가 감사 로그를 여는 전형적인 이유가 "그 공지 제목을 누가 바꿨지"인데, 변경 후 값을 넣으면 기억하고 있는 옛 제목으로 검색해도 아무것도 나오지 않는다. 변경 후 값은 `summary` 뒤에 `→ 새 값`으로 붙여 검색 가능하게 한다 — 조회 API의 `q`가 `summary`도 훑으므로(5-3) 옛 값·새 값 어느 쪽으로 찾아도 같은 행이 걸린다. 두 엔드포인트 모두 404 검사를 위해 이미 변경 전 행을 읽고 있어 추가 쿼리가 없다.
 
 ### 3-4. 시스템 설정 (`app/api/admin_system.py`)
 
@@ -142,10 +146,15 @@ NULL을 허용하는 이유는 나중에 요청 밖에서 남길 사건(정리 �
 |---|---|
 | `PROJECT_CREATE` | `프로젝트 생성` |
 | `PROJECT_DELETE` | `프로젝트 삭제 (30일 후 완전 삭제)` |
+| `PROJECT_PURGE` | `보관 기간 경과로 완전 삭제` |
 | `SCRIPT_UPDATE` | `대본 수정` |
 | `STAGE_RUN` | `음성 단계 실행` |
-| `STAGE_APPROVE` | `자막 단계 승인` |
+| `STAGE_APPROVE` | `자막 단계 승인` · `자막 단계 자동 승인` |
 | `STAGE_REGENERATE` | `영상 단계 재생성` |
+
+**`STAGE_APPROVE`는 승인 경로 두 개를 모두 덮는다.** 사용자가 [승인]을 누르는 HTTP 경로([projects.py](../../../app/api/projects.py)의 `approve_stage`)와, `auto_run` 프로젝트에서 워커가 `pipeline.approve_stage`를 직접 부르는 경로([worker.py](../../../app/core/worker.py)의 `_chain_if_auto`) 둘 다다. 자동 승인을 빼면 `auto_run` 프로젝트는 4단계를 다 지나 `DONE`이 되어도 `STAGE_APPROVE`가 한 건도 남지 않아, 관리자에게 "아무도 승인하지 않았는데 완료된 프로젝트"로 보인다. 둘을 가르는 것은 summary 뒤의 "자동"이고, 워커 경로는 `request`가 없어 `http_*`·`actor_ip`가 NULL이며 `actor`는 프로젝트 소유자다(사용자 행을 한 번 조회해 스냅샷을 채운다 — 자동 승인은 단계당 한 번뿐이라 비용을 따질 자리가 아니다).
+
+**`PROJECT_PURGE`는 정리 잡이 남긴다.** [cleanup.py](../../../app/core/cleanup.py)의 `_purge_project`가 행과 파일 트리를 **되돌릴 수 없게** 지우는 사건이고, 2-1·2-4가 이미 이 사건을 스냅샷 설계와 `http_path` NULL 허용의 근거로 쓰고 있다. 사람이 한 일이 아니므로 `actor`는 NULL이다. `target_label`(제목)은 행을 지운 뒤에는 읽을 수 없으므로 `list_purgeable_projects`가 `id`와 함께 미리 읽어 넘긴다. 기록은 행 삭제 직후·파일 삭제 앞에 둔다 — `record`는 커밋하지 않으므로 `_purge_project`의 마지막 커밋에 함께 실리고, "행 삭제 → 파일 삭제 → 커밋" 순서 규칙을 깨지 않는다.
 
 **단계 행위의 대상도 `STAGE`가 아니라 `PROJECT`다.** 단계는 프로젝트에 종속된 행이고 단독으로 의미가 없다. 프로젝트를 대상으로 통일해야 "이 프로젝트에 무슨 일이 있었나"가 `target_id` 하나로 모이고, 단계 이름은 `summary`가 말해준다. `target_type`에 `STAGE`를 두지 않는 이유다.
 
@@ -157,6 +166,14 @@ NULL을 허용하는 이유는 나중에 요청 밖에서 남길 사건(정리 �
 | `POST /api/auth/refresh` | 토큰 자동 갱신. 같은 이유다. **단 그 안의 재사용 감지는 `TOKEN_REUSE_DETECTED`로 반드시 남긴다** |
 
 두 경로는 `tests/test_audit_coverage.py`의 `_EXEMPT` 집합에 명시한다(9절). 빠뜨린 것이 아니라 결정한 것임을 코드에 남긴다.
+
+HTTP 엔드포인트가 아닌 사건 중에도 일부러 기록하지 않는 것이 있다. 커버리지 테스트가 잡아주지 못하는 영역이라 여기 적어둔다.
+
+| 사건 | 이유 |
+|---|---|
+| 워커의 단계 실행 성공/실패 (`run_one` / `run_claimed_stage`) | 사용자 행위가 아니라 그 행위의 **결과**다. 시작점인 `STAGE_RUN`이 이미 남고, 결과는 `stages.status`·`stages.error`가 권위 있는 값으로 들고 있으며 실패는 `studio.log`의 `logger.exception`이 스택까지 남긴다. 기록하면 진행률·재시도까지 딸려와 건수가 사용자 행위를 덮는다 |
+| `StageWorker._recover()`의 기동 시 FAILED 처리 | 재시작마다 발생하는 운영 잡음이고 주체가 "프로세스 재시작"이라 행위자가 없다. `logger.info("기동 복구: …")`가 이미 남는다 |
+| `_purge_old_audit_logs`(감사 로그 자체의 삭제) | **자기참조**다. 감사 로그를 지운 사실을 감사 로그에 남기면 매 주기 한 건씩 영구히 늘어나고, 그 행은 90일 뒤 다시 지워지며 또 한 건을 만든다. 대신 삭제 건수를 `logger.info`로 남긴다(프로젝트 완전 삭제 쪽과 같은 형식) |
 
 ## 4. 기록 헬퍼
 
@@ -213,6 +230,10 @@ async def record_failure(db: AsyncSession, **kwargs) -> None:
 `summary`는 200자, `target_label`·`actor_email`·`actor_name`은 각 컬럼 길이에 맞춰 헬퍼가 잘라 넣는다.
 
 **감사 INSERT를 `try/except`로 감싸 삼키지 않는다.** 삼키면 "기록이 없다"와 "행위가 없었다"를 구분할 수 없게 되어 감사 로그의 전제가 무너진다. 대신 실패할 수 있는 원인을 미리 없앤다 — 현실적으로 INSERT를 깨뜨리는 것은 값 길이뿐이고, 그것을 헬퍼가 처리한다. 그러고도 실패한다면 DB 장애이고 그 상황에선 원 작업도 어차피 실패한다.
+
+**미인증 경로가 감사 테이블을 키울 수 있다는 점은 알고 수용한다.** 위 근거는 "DB 장애는 외생적"을 전제하는데, 한 시나리오에서는 그렇지 않다. 이 기능 이전에 존재하지 않는 이메일로 로그인을 시도하면 DB 작업은 `find_by_email` SELECT 하나였다. 지금은 `record_failure`가 INSERT + 커밋을 더한다. 이 앱에는 rate limiting이 없고 보관 기간은 90일이므로, 지속적인 계정 열거 시도는 감사 테이블을 키운다 — 극단적으로 테이블스페이스가 차면 감사 INSERT가 실패하고, 위 방침대로 삼키지 않으므로 **모든 쓰기 엔드포인트가 500이 된다.** 즉 이 경우에는 감사 로깅 자체가 장애의 원인이다.
+
+그럼에도 지금은 코드를 바꾸지 않는다. 이 앱은 단독 배포 사내 도구이고, 존재하지 않는 계정 경로도 타이밍 노출을 막기 위해 Argon2 더미 해시를 계산하므로 시도 스루풋이 그 비용에 묶인다. 90일 보관이 상한을 씌운다. 문제가 실제로 관측되면 순서대로 대응한다 — (1) `LOGIN_FAILURE` 중 `actor_id IS NULL`인 행(= 없는 계정)에만 짧은 보관 기간을 적용하는 DELETE를 `_purge_old_audit_logs`에 한 줄 더한다(열거 패턴 탐지에 90일이 필요하지 않다), (2) `/api/auth/login`에 IP 기준 rate limiting을 넣는다(별도 과제다).
 
 ### 4-4. 쿼리
 
@@ -341,7 +362,7 @@ WHERE ...;   -- 위와 동일
 export const AUDIT_ACTION_LABEL: Record<string, string> = {
   LOGIN_SUCCESS: '로그인',
   LOGIN_FAILURE: '로그인 실패',
-  // ... 25종 (3절의 표 전부)
+  // ... 26종 (3절의 표 전부)
 }
 
 export const auditLogs = {
@@ -372,7 +393,9 @@ DELETE FROM audit_logs WHERE created_at < :before;
 
 보관 기간을 **소스 상수로 두는 이유**는 `PROJECT_RETENTION_DAYS`와 같다([cleanup.py:17-19](../../../app/core/cleanup.py#L17-L19)) — `.env`로 빼면 `check_env_defaults`의 범위 검증까지 붙어야 하고, 관리자가 이 값을 바꿀 이유가 아직 없다. 시스템 설정 화면에 올리는 것은 그때 가서 판단한다.
 
-만료 토큰 정리보다 **뒤에** 부른다. 프로젝트 완전 삭제는 한 건씩 실패할 수 있는데, 그 실패가 감사 로그 정리를 막지 않게 각자 자기 세션에서 돈다.
+만료 토큰 정리보다 **뒤에**, 프로젝트 완전 삭제보다 **앞에** 부른다. 프로젝트 완전 삭제는 한 건씩 실패할 수 있는데, 그 실패가 감사 로그 정리를 막지 않게 각자 자기 세션에서 돈다.
+
+삭제 건수는 `logger.info`로 남긴다(프로젝트 완전 삭제 쪽과 같은 형식). 이 단계 자체는 감사 로그에 남기지 않는다 — 3-6의 자기참조 항목 참고.
 
 ## 8. 에러 처리
 
@@ -411,6 +434,10 @@ DELETE FROM audit_logs WHERE created_at < :before;
 
 **커밋 여부는 롤백으로 판별한다 — 별도 세션으로는 확인할 수 없다.** `tests/conftest.py`의 `db_session`은 바깥 트랜잭션 위의 SAVEPOINT이고 `client` 픽스처가 같은 세션을 주입하므로([conftest.py:52-79](../../../tests/conftest.py#L52-L79)), 별도 세션에서는 커밋된 행도 보이지 않는다. 반대로 같은 세션에서는 커밋하지 않은 행도 보인다. 두 경우를 가르는 것은 **롤백 뒤에도 살아남는지** 하나뿐이다. `db.commit()`이 SAVEPOINT를 RELEASE하므로 그 뒤의 `rollback()`은 이미 반영된 행을 되돌리지 못한다.
 
+**반대로 "기록이 없어야 한다"를 보는 테스트에는 `rollback()`을 쓰면 안 된다.** 그 호출이 증거를 스스로 지워 구현이 어떻든 통과하게 만든다. 미커밋 행까지 보이는 그 세션에서 그대로 세는 것이 맞다.
+
+**남아 있는 한계.** 이 하네스는 "커밋 뒤 반납된 `conn`을 그대로 재사용하는" 회귀를 잡지 못한다. 테스트에서는 커밋이 커넥션을 풀에 반납하지 않으므로, 기록을 커밋 뒤로 옮기면서 `raw_connection()`을 다시 부르지 **않으면** 그 INSERT가 바깥 트랜잭션에 실려 `rollback()`을 넘겨 살아남는다(운영에서는 깨진다). 실제 풀링 엔진에 붙는 통합 테스트 계층이 생기기 전까지는 코드 주석이 그 규칙을 지킨다.
+
 **`tests/test_api_audit_logs.py`** (신규) — 조회 API
 
 - 기본 조회가 최근 7일만 돌려준다 (8일 전 기록은 빠진다)
@@ -426,9 +453,13 @@ DELETE FROM audit_logs WHERE created_at < :before;
 
 **`tests/test_audit_coverage.py`** (신규) — 누락 방지
 
-`app.routes`를 훑어 POST/PUT/PATCH/DELETE 경로를 모으고, 각 경로가 `_AUDITED` 또는 `_EXEMPT` 집합에 있는지 확인한다. 없으면 그 경로 이름과 함께 실패한다.
+OpenAPI 스키마를 훑어 POST/PUT/PATCH/DELETE의 **`(메서드, 경로)` 쌍**을 모으고, 각 쌍이 `_AUDITED` 또는 `_EXEMPT` 집합에 있는지 확인한다. 없으면 그 메서드와 경로를 함께 찍으며 실패한다.
 
-이것이 접근 방식(엔드포인트에서 헬퍼를 직접 호출)의 유일한 약점을 막는다. 새 변경 엔드포인트를 추가하고 감사를 잊으면 테스트가 **어느 경로인지 찍으며** 실패한다. 기록을 강요하는 것이 아니라 **어느 쪽 집합에 넣을지 결정하도록 강요**하는 것이다 — 3-6의 두 제외 항목처럼 "안 남기기로 했다"도 정당한 답이다.
+**단위가 경로가 아니라 쌍이어야 하는 이유**가 있다. 경로만 보면 이미 목록에 있는 경로에 메서드를 하나 더하는 변경이 조용히 통과한다 — 예를 들어 제목 수정용 `PATCH /api/projects/{project_id}`를 추가해도 그 경로는 `DELETE` 때문에 이미 `_AUDITED`에 있어 테스트가 초록색이다. 그런 변경(프로젝트 제목 변경)은 하필 `target_label` 스냅샷 설계(2-1)가 정확히 대비하는 종류의 사건이다. 현재 24쌍이 22개 경로에 들어 있다(`/api/admin/notices/{notice_id}`와 `/api/admin/faqs/{faq_id}`가 각각 PATCH+DELETE 둘씩).
+
+이것이 접근 방식(엔드포인트에서 헬퍼를 직접 호출)의 유일한 약점을 막는다. 새 변경 엔드포인트를 추가하고 감사를 잊으면 테스트가 **어느 메서드·경로인지 찍으며** 실패한다. 기록을 강요하는 것이 아니라 **어느 쪽 집합에 넣을지 결정하도록 강요**하는 것이다 — 3-6의 두 제외 항목처럼 "안 남기기로 했다"도 정당한 답이다.
+
+**한계 두 가지.** `include_in_schema=False`로 등록된 라우트는 OpenAPI에 들어가지 않아 이 방식으로 보이지 않는다(현재 0건이며, `_get_write_endpoints`의 독스트링에 적어두었다). 그리고 이 테스트는 HTTP 라우트만 본다 — 워커의 자동 승인이나 정리 잡의 완전 삭제처럼 요청 밖에서 일어나는 행위는 구조적으로 잡지 못하므로 3절 표와 3-6이 그 자리를 대신한다.
 
 **기존 테스트 파일에 추가**
 
@@ -447,7 +478,8 @@ DELETE FROM audit_logs WHERE created_at < :before;
 | `test_api_project_delete.py` | `PROJECT_DELETE`. **409로 거절된 삭제에는 기록이 남지 않는다** |
 | `test_api_script_edit.py` | `SCRIPT_UPDATE` |
 | `test_notices.py` | 읽음 표시에는 기록이 남지 않는다 |
-| `test_core_cleanup.py` | 90일 지난 기록은 지워지고 89일짜리는 남는다. 다른 정리 단계가 실패해도 감사 정리는 수행된다 |
+| `test_core_cleanup.py` | 90일 지난 기록은 지워지고 89일짜리는 남는다. 다른 정리 단계가 실패해도 감사 정리는 수행된다. **완전 삭제가 `PROJECT_PURGE`로 남고 실제로 커밋된다**(제목·행위자 NULL 포함). 보관 기간 안의 프로젝트에는 기록이 없다 |
+| `test_core_worker.py` | **워커의 자동 승인이 `STAGE_APPROVE`로 남고 실제로 커밋된다.** 마지막(render) 단계 분기를 별도로 고정한다 — 중간 단계는 `_chain_if_auto`가 다음 단계를 큐에 올리며 한 번 더 커밋하므로 기록이 잘못된 자리에 있어도 얹혀 살아남지만, 마지막 단계는 뒤에 커밋이 없어 위치 오류가 그대로 드러난다. 수동 모드에는 기록이 남지 않는다 |
 
 `tests/test_alembic_migration.py`는 새 리비전을 자동으로 포함한다.
 
