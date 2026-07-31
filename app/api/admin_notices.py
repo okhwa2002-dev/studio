@@ -1,11 +1,12 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_admin
-from app.constants import YN, NoticeStatus
+from app.constants import YN, AuditAction, AuditTarget, NoticeStatus
+from app.core import audit
 from app.db import get_db, raw_connection
 from app.queries import queries
 from app.utils.errors import Errors
@@ -67,6 +68,7 @@ async def list_notices(
 @router.post("", status_code=201)
 async def create_notice(
     body: NoticeRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
@@ -88,6 +90,11 @@ async def create_notice(
         created_by=admin["id"],
         updated_by=admin["id"],
     )
+    await audit.record(
+        conn, action=AuditAction.NOTICE_CREATE, request=request, actor=admin,
+        target_type=AuditTarget.NOTICE, target_id=notice_id, target_label=body.title,
+        summary="공지 등록 (게시)" if body.status == NoticeStatus.PUBLISHED else "공지 등록 (임시저장)",
+    )
     await db.commit()
     return {"id": notice_id}
 
@@ -104,6 +111,7 @@ async def _load_notice(conn, notice_id: int) -> dict:
 async def update_notice(
     notice_id: int,
     body: NoticeRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
@@ -125,6 +133,11 @@ async def update_notice(
         updated_at=now,
         updated_by=admin["id"],
     )
+    await audit.record(
+        conn, action=AuditAction.NOTICE_UPDATE, request=request, actor=admin,
+        target_type=AuditTarget.NOTICE, target_id=notice_id, target_label=body.title,
+        summary="공지 수정 (게시)" if body.status == NoticeStatus.PUBLISHED else "공지 수정 (임시저장)",
+    )
     await db.commit()
     return {"id": notice_id}
 
@@ -132,15 +145,23 @@ async def update_notice(
 @router.delete("/{notice_id}")
 async def delete_notice(
     notice_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
     conn = await raw_connection(db)
-    await _load_notice(conn, notice_id)
+    row = await _load_notice(conn, notice_id)
 
     now = now_local()
     await queries.soft_delete_notice(
         conn, id=notice_id, deleted_at=now, deleted_by=admin["id"]
+    )
+    # 소프트 삭제라 지금은 행이 남지만, 삭제 전에 읽어둔 제목을 남겨 두면
+    # 나중에 완전 삭제로 바뀌어도 기록은 온전하다.
+    await audit.record(
+        conn, action=AuditAction.NOTICE_DELETE, request=request, actor=admin,
+        target_type=AuditTarget.NOTICE, target_id=notice_id, target_label=row["title"],
+        summary="공지 삭제",
     )
     await db.commit()
     return {"id": notice_id, "deleted_at": now}

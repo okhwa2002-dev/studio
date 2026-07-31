@@ -1,5 +1,6 @@
 from app.auth.security import hash_password
 from app.constants import UserRole, UserStatus
+from app.db import raw_connection
 from app.models.user import User
 
 
@@ -155,3 +156,34 @@ async def test_member_cannot_write_settings(client, db_session):
 async def test_anonymous_is_unauthorized(client):
     resp = await client.get("/api/admin/system/settings")
     assert resp.status_code == 401
+
+
+async def test_settings_update_records_only_changed_keys(client, db_session):
+    await _login(client, db_session, "system-audit@example.com")
+
+    current = (await client.get("/api/admin/system/settings")).json()["settings"]
+    body = {**current, "password_min_len": 12}
+    resp = await client.put("/api/admin/system/settings", json=body)
+    assert resp.status_code == 200
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT * FROM audit_logs WHERE action = 'SYSTEM_SETTINGS_UPDATE'")
+    assert len(rows) == 1
+    assert rows[0]["target_type"] == "SYSTEM"
+    assert rows[0]["target_id"] is None
+    assert rows[0]["summary"] == "password_min_len 8 → 12"
+
+
+async def test_settings_update_without_changes_is_not_recorded(client, db_session):
+    """화면이 폼 전체를 PUT하므로, 아무것도 안 바꾼 저장이 기록을 만들면 안 된다."""
+    await _login(client, db_session, "system-audit2@example.com")
+
+    current = (await client.get("/api/admin/system/settings")).json()["settings"]
+    resp = await client.put("/api/admin/system/settings", json=current)
+    assert resp.status_code == 200
+
+    conn = await raw_connection(db_session)
+    count = await conn.fetchval(
+        "SELECT COUNT(*) FROM audit_logs WHERE action = 'SYSTEM_SETTINGS_UPDATE'"
+    )
+    assert count == 0

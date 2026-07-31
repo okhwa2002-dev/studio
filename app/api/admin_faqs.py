@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_admin
-from app.constants import FaqCategory, FaqStatus
+from app.constants import AuditAction, AuditTarget, FaqCategory, FaqStatus
+from app.core import audit
 from app.db import get_db, raw_connection
 from app.queries import queries
 from app.utils.errors import Errors
@@ -50,6 +51,7 @@ async def list_faqs(
 @router.post("", status_code=201)
 async def create_faq(
     body: FaqRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
@@ -67,6 +69,11 @@ async def create_faq(
         created_by=admin["id"],
         updated_by=admin["id"],
     )
+    await audit.record(
+        conn, action=AuditAction.FAQ_CREATE, request=request, actor=admin,
+        target_type=AuditTarget.FAQ, target_id=faq_id, target_label=body.question,
+        summary="FAQ 등록 (게시)" if body.status == FaqStatus.PUBLISHED else "FAQ 등록 (임시저장)",
+    )
     await db.commit()
     return {"id": faq_id}
 
@@ -83,11 +90,12 @@ async def _load_faq(conn, faq_id: int) -> dict:
 async def update_faq(
     faq_id: int,
     body: FaqRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
     conn = await raw_connection(db)
-    await _load_faq(conn, faq_id)
+    row = await _load_faq(conn, faq_id)
 
     await queries.update_faq(
         conn,
@@ -100,6 +108,11 @@ async def update_faq(
         updated_at=now_local(),
         updated_by=admin["id"],
     )
+    await audit.record(
+        conn, action=AuditAction.FAQ_UPDATE, request=request, actor=admin,
+        target_type=AuditTarget.FAQ, target_id=faq_id, target_label=body.question,
+        summary="FAQ 수정",
+    )
     await db.commit()
     return {"id": faq_id}
 
@@ -107,13 +120,19 @@ async def update_faq(
 @router.delete("/{faq_id}")
 async def delete_faq(
     faq_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
     conn = await raw_connection(db)
-    await _load_faq(conn, faq_id)
+    row = await _load_faq(conn, faq_id)
 
     now = now_local()
     await queries.soft_delete_faq(conn, id=faq_id, deleted_at=now, deleted_by=admin["id"])
+    await audit.record(
+        conn, action=AuditAction.FAQ_DELETE, request=request, actor=admin,
+        target_type=AuditTarget.FAQ, target_id=faq_id, target_label=row["question"],
+        summary="FAQ 삭제",
+    )
     await db.commit()
     return {"id": faq_id, "deleted_at": now}

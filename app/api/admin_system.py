@@ -1,9 +1,11 @@
 import json
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_admin
+from app.constants import AuditAction, AuditTarget
+from app.core import audit
 from app.db import get_db, raw_connection
 from app.queries import queries
 from app.runtime_settings import (
@@ -46,6 +48,7 @@ async def read_settings(
 @router.put("/settings")
 async def write_settings(
     body: RuntimeSettings,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
@@ -59,6 +62,11 @@ async def write_settings(
     incoming = body.model_dump()
     now = now_local()
 
+    # 변경 전 값은 get_runtime_settings가 아니라 DB에서 직접 읽는다 — 그 함수는 30초
+    # TTL 캐시라, 방금 다른 프로세스가 바꾼 값을 "이전 값"으로 잘못 적을 수 있다.
+    rows = [row async for row in queries.select_all_settings(conn)]
+    before = RuntimeSettings.from_overrides({r["key"]: r["value"] for r in rows}).model_dump()
+
     for key, value in incoming.items():
         if value == defaults[key]:
             # 기본값으로 되돌린 항목은 행을 지운다 (없는 행 삭제는 그냥 0건이다).
@@ -67,6 +75,20 @@ async def write_settings(
             await queries.upsert_setting(
                 conn, key=key, value=json.dumps(value), now=now, actor_id=admin["id"]
             )
+
+    # 화면이 폼 전체를 PUT하므로 실제로 바뀐 키만 골라야 기록이 의미를 갖는다.
+    # 여기만 값을 남기는 이유: RuntimeSettings에는 민감값이 없고(API 키는 .env에만 있다),
+    # "누가 비밀번호 최소 길이를 낮췄나"는 값 없이는 답할 수 없는 질문이다.
+    changed = [k for k, v in incoming.items() if v != before[k]]
+    if changed:
+        await audit.record(
+            conn,
+            action=AuditAction.SYSTEM_SETTINGS_UPDATE,
+            request=request,
+            actor=admin,
+            target_type=AuditTarget.SYSTEM,
+            summary=", ".join(f"{k} {before[k]} → {incoming[k]}" for k in changed),
+        )
     await db.commit()
     invalidate_runtime_settings()
 

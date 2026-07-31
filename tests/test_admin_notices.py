@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from app.auth.security import hash_password
 from app.constants import NoticeStatus, UserRole, UserStatus, YN
+from app.db import raw_connection
 from app.models.user import User
 from app.utils.time import now_local
 
@@ -206,3 +207,23 @@ async def test_member_cannot_update_or_delete(client, db_session):
 
     assert (await client.patch("/api/admin/notices/1", json=_payload())).status_code == 403
     assert (await client.delete("/api/admin/notices/1")).status_code == 403
+
+
+async def test_notice_lifecycle_is_recorded(client, db_session):
+    await _login(client, db_session, "notice-audit@example.com")
+
+    created = await client.post("/api/admin/notices", json=_payload(title="점검 공지"))
+    notice_id = created.json()["id"]
+    await client.patch(
+        f"/api/admin/notices/{notice_id}", json=_payload(title="점검 공지(수정)")
+    )
+    await client.delete(f"/api/admin/notices/{notice_id}")
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch(
+        "SELECT * FROM audit_logs WHERE target_type = 'NOTICE' ORDER BY id"
+    )
+    assert [r["action"] for r in rows] == ["NOTICE_CREATE", "NOTICE_UPDATE", "NOTICE_DELETE"]
+    assert rows[0]["target_id"] == notice_id
+    assert rows[0]["target_label"] == "점검 공지"
+    assert rows[1]["target_label"] == "점검 공지(수정)"

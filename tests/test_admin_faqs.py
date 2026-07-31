@@ -1,5 +1,6 @@
 from app.auth.security import hash_password
 from app.constants import FaqCategory, FaqStatus, UserRole, UserStatus
+from app.db import raw_connection
 from app.models.user import User
 
 
@@ -162,3 +163,17 @@ async def test_member_cannot_access_admin_faqs(client, db_session):
     assert (await client.post("/api/admin/faqs", json=_payload())).status_code == 403
     assert (await client.patch("/api/admin/faqs/1", json=_payload())).status_code == 403
     assert (await client.delete("/api/admin/faqs/1")).status_code == 403
+
+
+async def test_faq_lifecycle_is_recorded(client, db_session):
+    await _login(client, db_session, "faq-audit@example.com")
+
+    created = await client.post("/api/admin/faqs", json=_payload(question="환불 되나요?"))
+    faq_id = created.json()["id"]
+    await client.patch(f"/api/admin/faqs/{faq_id}", json=_payload(question="환불 규정은?"))
+    await client.delete(f"/api/admin/faqs/{faq_id}")
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT * FROM audit_logs WHERE target_type = 'FAQ' ORDER BY id")
+    assert [r["action"] for r in rows] == ["FAQ_CREATE", "FAQ_UPDATE", "FAQ_DELETE"]
+    assert rows[0]["target_label"] == "환불 되나요?"
