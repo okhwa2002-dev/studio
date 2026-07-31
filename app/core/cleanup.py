@@ -2,6 +2,8 @@ import asyncio
 import logging
 from datetime import timedelta
 
+from app.constants import AuditAction, AuditTarget
+from app.core import audit
 from app.db import async_session_maker, raw_connection
 from app.queries import queries
 from app.utils import storage
@@ -42,7 +44,7 @@ async def _purge_expired_tokens(session) -> None:
     await session.commit()
 
 
-async def _purge_project(session, project_id: int) -> None:
+async def _purge_project(session, project_id: int, title: str | None) -> None:
     """프로젝트 하나를 행·파일까지 완전히 지운다.
 
     순서가 이 함수의 핵심이다. 행을 먼저 지우고 파일을 지운 뒤 **마지막에 커밋**한다.
@@ -58,10 +60,37 @@ async def _purge_project(session, project_id: int) -> None:
     await queries.delete_assets_by_project(conn, project_id=project_id)
     await queries.delete_stages_by_project(conn, project_id=project_id)
     await queries.delete_project(conn, id=project_id)
+    # 감사 기록은 행 삭제 직후, 파일 삭제·커밋보다 앞에 둔다. record는 커밋하지 않고
+    # 현재 트랜잭션에 INSERT만 하므로 마지막 commit()에 함께 실린다 — 위 순서 규칙을
+    # 깨지 않는다. 파일 삭제 뒤로 미루면 delete_tree가 던졌을 때 기록만 남고 실제로는
+    # 정리가 끝나지 않은 상태가 되는데, 그 조합은 이 함수가 피하려는 바로 그 것이다.
+    # target_label(제목)은 위에서 행을 지웠으므로 더 이상 읽을 수 없다 —
+    # list_purgeable_projects가 id와 함께 미리 읽어 넘겨준다.
+    await audit.record(
+        conn,
+        action=AuditAction.PROJECT_PURGE,
+        request=None,  # 요청 밖에서 도는 잡이다 — http_*·actor_ip는 NULL(설계 2-4)
+        actor=None,    # 사람이 한 일이 아니다
+        target_type=AuditTarget.PROJECT,
+        target_id=project_id,
+        target_label=title,
+        summary="보관 기간 경과로 완전 삭제",
+    )
     # workdir이 pipeline에서 projects/{id}/{stage}로만 정해지므로 이 서브트리가 그
     # 프로젝트의 파일 전부다 — asset으로 기록되지 않는 스톡 소재까지 함께 사라진다.
     storage.delete_tree(f"projects/{project_id}")
     await session.commit()
+
+
+def _affected(status) -> int:
+    """asyncpg가 돌려준 명령 상태 문자열("DELETE 5")에서 건수를 뽑는다.
+
+    aiosql의 asyncpg 어댑터가 `!` 쿼리의 결과로 이 문자열을 그대로 돌려준다
+    (정수 추출은 아직 구현돼 있지 않다). 모양이 다르면 0으로 본다 — 로그 한 줄 때문에
+    정리 잡이 죽으면 안 된다.
+    """
+    parts = str(status).split()
+    return int(parts[-1]) if parts and parts[-1].isdigit() else 0
 
 
 async def _purge_old_audit_logs(session) -> None:
@@ -69,11 +98,17 @@ async def _purge_old_audit_logs(session) -> None:
 
     감사 로그는 append-only라 지우는 경로가 여기 하나뿐이다. 멱등한 DELETE이므로
     같은 잡이 두 번 돌아도, 인스턴스가 둘이어도 문제가 없다.
+
+    이 삭제 자체는 감사 기록을 남기지 않는다 — 감사 로그를 지운 사실을 감사 로그에
+    남기면 자기참조로 매 주기 한 건씩 무한히 늘어난다. 대신 건수를 서버 로그로 남긴다.
     """
     conn = await raw_connection(session)
     before = now_local() - timedelta(days=AUDIT_RETENTION_DAYS)
-    await queries.delete_old_audit_logs(conn, before=before)
+    status = await queries.delete_old_audit_logs(conn, before=before)
     await session.commit()
+    deleted = _affected(status)
+    if deleted:
+        logger.info("보관 기간이 지난 활동 기록 %d건을 삭제했습니다.", deleted)
 
 
 async def run_once(session_factory=None) -> None:
@@ -93,15 +128,19 @@ async def run_once(session_factory=None) -> None:
     async with factory() as session:
         conn = await raw_connection(session)
         before = now_local() - timedelta(days=PROJECT_RETENTION_DAYS)
-        project_ids = [r["id"] async for r in queries.list_purgeable_projects(conn, before=before)]
+        # 제목까지 함께 읽는다 — 행을 지운 뒤에는 감사 기록의 target_label을 채울 수 없다.
+        targets = [
+            (r["id"], r["title"])
+            async for r in queries.list_purgeable_projects(conn, before=before)
+        ]
 
     # 프로젝트는 한 건씩 각자의 트랜잭션으로 지운다 — 한 건이 실패해도 나머지가 함께
     # 롤백되지 않고, 실패한 건은 다음 주기가 다시 집는다.
     purged = 0
-    for project_id in project_ids:
+    for project_id, title in targets:
         try:
             async with factory() as session:
-                await _purge_project(session, project_id)
+                await _purge_project(session, project_id, title)
             purged += 1
         except Exception:
             logger.exception("프로젝트 완전 삭제 실패: project=%s", project_id)

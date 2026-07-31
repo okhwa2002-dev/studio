@@ -34,7 +34,7 @@ export type AuditLogQuery = {
   size?: number
 }
 
-// 백엔드 AuditAction(app/constants.py)의 25종과 1:1이다. 행위를 추가하면 여기에도
+// 백엔드 AuditAction(app/constants.py)의 26종과 1:1이다. 행위를 추가하면 여기에도
 // 라벨을 넣어야 필터 선택지에 나타난다 — 그래서 라벨 없는 코드값이 화면에 뜰 수 없다.
 export const AUDIT_ACTION_LABEL: Record<string, string> = {
   REGISTER: '회원 가입',
@@ -58,6 +58,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   SYSTEM_SETTINGS_UPDATE: '시스템 설정 변경',
   PROJECT_CREATE: '프로젝트 생성',
   PROJECT_DELETE: '프로젝트 삭제',
+  PROJECT_PURGE: '프로젝트 완전 삭제',
   SCRIPT_UPDATE: '대본 수정',
   STAGE_RUN: '단계 실행',
   STAGE_APPROVE: '단계 승인',

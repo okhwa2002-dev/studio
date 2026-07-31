@@ -7,7 +7,16 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
-from app.constants import AssetKind, AuditAction, AuditTarget, ProjectStatus, StageName, StageStatus, UserRole
+from app.constants import (
+    STAGE_LABEL,
+    AssetKind,
+    AuditAction,
+    AuditTarget,
+    ProjectStatus,
+    StageName,
+    StageStatus,
+    UserRole,
+)
 from app.core import audit, events, pipeline, views
 from app.core.worker import get_worker
 from app.db import get_db, raw_connection
@@ -19,14 +28,6 @@ from app.utils.errors import AppError, Errors
 from app.utils.time import now_local
 
 router = APIRouter(prefix="/projects", tags=["projects"])
-
-# 감사 로그 요약에 쓰는 단계 이름. 프론트의 STAGE_LABEL(web/src/lib/projects.ts)과 같은 값이다.
-_STAGE_LABEL = {
-    StageName.SCRIPT: "대본",
-    StageName.VOICE: "음성",
-    StageName.CAPTIONS: "자막",
-    StageName.RENDER: "영상",
-}
 
 
 async def _load_owned_project(conn, project_id: int, user_id: int) -> dict:
@@ -269,7 +270,7 @@ async def run_stage(
     await audit.record(
         conn, action=AuditAction.STAGE_RUN, request=request, actor=user,
         target_type=AuditTarget.PROJECT, target_id=project_id, target_label=project["title"],
-        summary=f"{_STAGE_LABEL.get(name, name)} 단계 실행",
+        summary=f"{STAGE_LABEL.get(name, name)} 단계 실행",
     )
     await db.commit()
     # 커밋 이후 conn 재획득 — 운영에서는 commit()이 raw 커넥션을 풀에 반납한다.
@@ -298,7 +299,7 @@ async def approve_stage(
     await audit.record(
         conn, action=AuditAction.STAGE_APPROVE, request=request, actor=user,
         target_type=AuditTarget.PROJECT, target_id=project_id, target_label=project["title"],
-        summary=f"{_STAGE_LABEL.get(name, name)} 단계 승인",
+        summary=f"{STAGE_LABEL.get(name, name)} 단계 승인",
     )
     await pipeline.approve_stage(db, project, stage, actor_id=user["id"])  # 내부에서 commit
     # approve_stage가 이미 commit했다 — 커밋 이후 conn을 재획득해야 한다(운영에서는
@@ -319,7 +320,7 @@ async def regenerate_stage(
     await audit.record(
         conn, action=AuditAction.STAGE_REGENERATE, request=request, actor=user,
         target_type=AuditTarget.PROJECT, target_id=project_id, target_label=project["title"],
-        summary=f"{_STAGE_LABEL.get(name, name)} 단계 재생성",
+        summary=f"{STAGE_LABEL.get(name, name)} 단계 재생성",
     )
     await pipeline.regenerate_stage(db, stage, actor_id=user["id"])  # 내부에서 commit
     # regenerate_stage가 이미 commit했다 — 커밋 이후 conn을 재획득해야 한다.

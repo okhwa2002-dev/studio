@@ -50,12 +50,12 @@ async def _add_user(session, email: str) -> User:
     return user
 
 
-async def _add_project(session, owner_id: int, *, deleted_at=None) -> int:
+async def _add_project(session, owner_id: int, *, deleted_at=None, title="t") -> int:
     """프로젝트 + script 단계 + asset 1건 + 파일을 만든다."""
     conn = await raw_connection(session)
     now = now_local()
     project_id = await queries.insert_project(
-        conn, owner_id=owner_id, title="t", topic="주제",
+        conn, owner_id=owner_id, title=title, topic="주제",
         status=ProjectStatus.DRAFT, current_stage=StageName.SCRIPT,
         settings=json.dumps({}), created_at=now, updated_at=now,
         created_by=owner_id, updated_by=owner_id,
@@ -222,6 +222,59 @@ async def test_purge_leaves_other_projects_untouched(db_session, storage_root):
     assert await _project_exists(db_session, kept)
     assert await _count_children(db_session, kept) == (1, 1)
     assert (storage_root / f"projects/{kept}/voice/voice.mp3").exists()
+
+
+async def test_purge_is_recorded_before_the_commit(db_session, storage_root):
+    """완전 삭제가 PROJECT_PURGE로 남고, 그 기록이 실제로 커밋되는지 본다.
+
+    _purge_project는 마지막에 한 번만 커밋한다. audit.record는 커밋하지 않으므로
+    호출이 그 커밋보다 뒤로 밀리면 행이 조용히 사라진다 — rollback() 뒤에도 남는지로
+    판별한다(test_core_audit.py::test_record_failure_survives_rollback과 같은 패턴).
+
+    제목은 행이 지워진 뒤에는 읽을 수 없다. list_purgeable_projects가 미리 읽어
+    넘겨주지 않으면 target_label이 비고, 그러면 이 단언이 깨진다.
+    """
+    user = await _add_user(db_session, "cl-purge-audit@example.com")
+    old = now_local() - timedelta(days=cleanup.PROJECT_RETENTION_DAYS + 1)
+    project_id = await _add_project(db_session, user.id, deleted_at=old, title="여행 브이로그")
+
+    await cleanup.run_once(_factory(db_session))
+    await db_session.rollback()
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch(
+        "SELECT * FROM audit_logs WHERE action = $1 ORDER BY id", AuditAction.PROJECT_PURGE
+    )
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["target_type"] == "PROJECT"
+    assert row["target_id"] == project_id
+    assert row["target_label"] == "여행 브이로그"
+    assert row["summary"] == "보관 기간 경과로 완전 삭제"
+    assert row["success_yn"] == "Y"
+    # 사람이 아니라 잡이 주체다 — 행위자·호출 정보가 전부 비어 있다(설계 2-4).
+    assert row["actor_id"] is None
+    assert row["actor_email"] is None
+    assert row["http_method"] is None
+    assert row["http_path"] is None
+    assert row["actor_ip"] is None
+
+
+async def test_purge_records_nothing_for_projects_within_retention(db_session, storage_root):
+    """지우지 않은 프로젝트에는 기록도 없어야 한다.
+
+    여기서 rollback()을 쓰면 안 된다 — "기록이 없다"를 확인하는 테스트가 스스로
+    증거를 지워 무조건 통과하게 된다.
+    """
+    user = await _add_user(db_session, "cl-nopurge-audit@example.com")
+    recent = now_local() - timedelta(days=cleanup.PROJECT_RETENTION_DAYS - 1)
+    await _add_project(db_session, user.id, deleted_at=recent)
+
+    await cleanup.run_once(_factory(db_session))
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT id FROM audit_logs WHERE action = $1", AuditAction.PROJECT_PURGE)
+    assert rows == []
 
 
 async def test_run_once_is_idempotent(db_session, storage_root):

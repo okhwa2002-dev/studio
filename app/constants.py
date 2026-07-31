@@ -41,6 +41,19 @@ class StageName(StrEnum):
     RENDER = "render"
 
 
+# 단계의 한국어 이름. 감사 로그 summary가 쓴다.
+# 여기 둔 이유: 승인 경로가 두 개(HTTP 엔드포인트 app/api/projects.py, 워커의 자동 승인
+# app/core/worker.py)라 어느 한쪽에 두면 다른 쪽이 복제해야 하고, 복제되는 순간
+# "대본 단계 승인"과 "script 단계 자동 승인"처럼 같은 사건의 표기가 갈라진다.
+# 프론트의 STAGE_LABEL(web/src/lib/projects.ts)과 같은 값이다.
+STAGE_LABEL = {
+    StageName.SCRIPT: "대본",
+    StageName.VOICE: "음성",
+    StageName.CAPTIONS: "자막",
+    StageName.RENDER: "영상",
+}
+
+
 class StageStatus(StrEnum):
     """stages.status 코드값. DB에 대문자로 저장된다."""
 
@@ -125,8 +138,14 @@ class AuditAction(StrEnum):
     # 프로젝트
     PROJECT_CREATE = "PROJECT_CREATE"
     PROJECT_DELETE = "PROJECT_DELETE"
+    # 보관 기간이 지난 소프트 삭제 프로젝트를 정리 잡이 되돌릴 수 없게 지운 사건.
+    # 사람이 아니라 잡이 주체라 actor_id·http_*가 전부 NULL이다(2-4가 허용한 경우).
+    PROJECT_PURGE = "PROJECT_PURGE"
     SCRIPT_UPDATE = "SCRIPT_UPDATE"
     STAGE_RUN = "STAGE_RUN"
+    # 수동 승인과 auto_run 워커의 자동 승인이 같은 코드를 쓴다 — 둘을 가르는 것은
+    # summary("… 단계 승인" / "… 단계 자동 승인")다. 자동 승인을 빼면 auto_run 프로젝트가
+    # "아무도 승인하지 않았는데 완료된 프로젝트"로 보인다.
     STAGE_APPROVE = "STAGE_APPROVE"
     STAGE_REGENERATE = "STAGE_REGENERATE"
 

@@ -76,7 +76,9 @@ WHERE id = :id AND deleted_at IS NULL;
 -- name: list_purgeable_projects
 -- 소프트 삭제 후 보관 기간이 지난 프로젝트. 정리 잡만 쓴다
 -- (다른 조회는 deleted_at IS NULL로 삭제된 것을 아예 보지 않는다).
-SELECT id FROM projects
+-- title까지 함께 읽는 이유: 정리 잡이 PROJECT_PURGE 감사 기록의 target_label에 쓴다.
+-- 행을 지운 뒤에는 읽을 수 없으므로 여기서 같이 가져와 추가 왕복을 만들지 않는다.
+SELECT id, title FROM projects
 WHERE deleted_at IS NOT NULL AND deleted_at < :before
 ORDER BY id;
 

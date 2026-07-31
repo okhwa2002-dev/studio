@@ -2,7 +2,7 @@ import json
 from contextlib import asynccontextmanager
 
 from app.auth.security import hash_password
-from app.constants import ProjectStatus, StageName, StageStatus, UserRole, UserStatus
+from app.constants import AuditAction, ProjectStatus, StageName, StageStatus, UserRole, UserStatus
 from app.core import events, pipeline
 from app.core.worker import StageWorker
 from app.db import raw_connection
@@ -199,6 +199,120 @@ async def test_auto_run_approves_and_queues_next_stage(db_session):
     stage_events = [(e["stage"]["name"], e["stage"]["status"]) for e in received if e["type"] == "stage"]
     assert (StageName.SCRIPT, StageStatus.APPROVED) in stage_events
     assert (StageName.VOICE, StageStatus.QUEUED) in stage_events
+
+
+async def test_auto_approve_is_recorded_in_the_same_commit(db_session):
+    """워커의 자동 승인이 STAGE_APPROVE로 남고, 그 기록이 실제로 커밋되는지 본다.
+
+    같은 세션에서 조회만 하면(rollback 없이) 커밋 여부와 무관하게 행이 보인다 —
+    이 세션은 자신의 미커밋 쓰기도 그대로 읽는다(SAVEPOINT 격리, conftest 참고).
+    그래서 rollback()을 걸어 이미 커밋된 것만 살아남게 해야 "audit.record가
+    pipeline.approve_stage(내부 commit) **앞**에 있는가"를 실제로 검증한다.
+    기록을 approve_stage 뒤로 옮기면 이 단언이 0건으로 깨진다.
+    """
+    user_id, project_id, stage_id = await _seed(
+        db_session, "auto-audit@example.com", settings={"auto_run": True}
+    )
+    await pipeline.queue_stage(db_session, stage_id, actor_id=None)
+    await db_session.commit()
+
+    worker = StageWorker(session_factory=_factory(db_session))
+    await worker.run_one(stage_id)
+
+    await db_session.rollback()
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch(
+        "SELECT * FROM audit_logs WHERE action = $1 AND target_id = $2 ORDER BY id",
+        AuditAction.STAGE_APPROVE, project_id,
+    )
+    assert len(rows) == 1
+    row = rows[0]
+    # 수동 승인("대본 단계 승인")과 구분되어야 한다.
+    assert row["summary"] == "대본 단계 자동 승인"
+    assert row["target_type"] == "PROJECT"
+    assert row["target_label"] == "t"
+    assert row["success_yn"] == "Y"
+    # 행위자는 프로젝트 소유자다. 스냅샷도 채워야 관리자 화면에서 이름/이메일이 보인다.
+    assert row["actor_id"] == user_id
+    assert row["actor_email"] == "auto-audit@example.com"
+    # 요청 밖에서 일어난 사건이라 호출 정보는 비어 있다(설계 2-4).
+    assert row["http_method"] is None
+    assert row["http_path"] is None
+    assert row["actor_ip"] is None
+
+
+async def test_auto_approve_of_last_stage_is_recorded(db_session, monkeypatch):
+    """마지막(render) 단계의 자동 승인도 기록이 남아야 한다.
+
+    이 분기가 기록 위치를 가장 날카롭게 검사한다. 중간 단계는 _chain_if_auto가
+    다음 단계를 큐에 올리며 한 번 더 commit하므로, 기록을 approve_stage **뒤**로
+    옮겨도 그 커밋에 얹혀 살아남는다. 마지막 단계는 next_stage가 None이라 곧바로
+    return하고 그 뒤에 커밋이 없다 — 위치가 틀리면 여기서만 행이 사라진다.
+    """
+    from app.providers.base import StageResult
+    from app.providers.render.fake import FakeRender
+
+    async def _fake_run(self, ctx):
+        return StageResult(output={"provider": "fake"}, assets=[])
+
+    monkeypatch.setattr(FakeRender, "run", _fake_run)
+
+    conn = await raw_connection(db_session)
+    now = now_local()
+    user = User(email="auto-audit-last@example.com", password_hash=hash_password("pw12345"),
+                role=UserRole.MEMBER, status=UserStatus.ACTIVE)
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    project_id = await queries.insert_project(
+        conn, owner_id=user.id, title="마지막", topic="바다 거북",
+        status=ProjectStatus.REVIEW, current_stage=StageName.RENDER,
+        settings=json.dumps({"auto_run": True}),
+        created_at=now, updated_at=now, created_by=user.id, updated_by=user.id,
+    )
+    stage_id = await queries.insert_stage(
+        conn, project_id=project_id, name=StageName.RENDER, provider="fake",
+        status=StageStatus.PENDING, output=json.dumps({}), error=None, attempt=0,
+        started_at=None, finished_at=None,
+        created_at=now, updated_at=now, created_by=user.id, updated_by=user.id,
+    )
+    await db_session.commit()
+    await pipeline.queue_stage(db_session, stage_id, actor_id=None)
+    await db_session.commit()
+
+    worker = StageWorker(session_factory=_factory(db_session))
+    await worker.run_one(stage_id)
+
+    await db_session.rollback()
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch(
+        "SELECT * FROM audit_logs WHERE action = $1 AND target_id = $2",
+        AuditAction.STAGE_APPROVE, project_id,
+    )
+    assert len(rows) == 1
+    assert rows[0]["summary"] == "영상 단계 자동 승인"
+    assert rows[0]["target_label"] == "마지막"
+
+
+async def test_manual_mode_records_no_auto_approve(db_session):
+    """auto_run이 아니면 워커는 승인하지 않으므로 기록도 없어야 한다.
+
+    여기서 rollback()을 쓰면 안 된다 — "기록이 없다"를 확인하는 테스트가 스스로
+    증거를 지워 무조건 통과하게 된다. 미커밋 행까지 보이는 이 세션에서 그대로 센다.
+    """
+    _, project_id, stage_id = await _seed(db_session, "manual-audit@example.com")
+    await pipeline.queue_stage(db_session, stage_id, actor_id=None)
+    await db_session.commit()
+
+    worker = StageWorker(session_factory=_factory(db_session))
+    await worker.run_one(stage_id)
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT action FROM audit_logs WHERE target_id = $1", project_id)
+    assert [r["action"] for r in rows] == []
 
 
 async def test_auto_run_stops_on_failure(db_session, monkeypatch):

@@ -2,8 +2,8 @@ import asyncio
 import logging
 
 from app.config import get_settings
-from app.constants import StageStatus
-from app.core import events, pipeline, views
+from app.constants import STAGE_LABEL, AuditAction, AuditTarget, StageStatus
+from app.core import audit, events, pipeline, views
 from app.db import async_session_maker, raw_connection
 from app.queries import queries
 from app.utils.errors import AppError
@@ -136,11 +136,35 @@ class StageWorker:
 
         승인은 기존 approve_stage 경로를 그대로 태운다 — 자동/수동이 같은 코드를
         지나므로 상태 머신에 새 규칙이 필요 없다. 실패하면 여기 오지 않고 멈춘다.
+
+        감사 기록도 같은 이유로 수동 승인과 같은 STAGE_APPROVE를 남긴다. 여기를 빼면
+        auto_run 프로젝트는 4단계를 다 지나 DONE이 되어도 STAGE_APPROVE가 한 건도
+        남지 않아, 관리자에게 "아무도 승인하지 않았는데 완료된 프로젝트"로 보인다.
         """
         if stage["status"] != StageStatus.NEEDS_REVIEW:
             return
         if not project.get("settings", {}).get("auto_run"):
             return
+
+        conn = await raw_connection(session)
+        # 행위자 스냅샷(email·name)을 채우려면 사용자 행이 필요하다. 자동 승인은 단계당
+        # 한 번뿐이라 추가 조회 한 번이 아깝지 않다. 행이 없으면(도달 불가 — 사용자는
+        # 하드 삭제되지 않는다) 스냅샷 없이 남긴다. 기록 자체를 빼는 것보다 낫다.
+        actor_row = await queries.find_by_id(conn, id=actor)
+        # 기록을 approve_stage 앞에 두는 이유는 app/api/projects.py의 approve_stage와 같다:
+        # approve_stage가 내부에서 commit하므로 이 행이 그 커밋에 함께 실린다. 뒤에 두면
+        # 커밋되지 않은 채 남아 세션이 닫힐 때 조용히 사라진다. 승인이 STAGE_CONFLICT로
+        # 끝나면(사용자 조작이 먼저 이겼다) 이 행도 함께 롤백되는데, 그게 맞는 동작이다.
+        await audit.record(
+            conn,
+            action=AuditAction.STAGE_APPROVE,
+            request=None,  # 요청 밖에서 일어나는 사건 — http_*·actor_ip는 NULL이다(설계 2-4)
+            actor=dict(actor_row) if actor_row is not None else None,
+            target_type=AuditTarget.PROJECT,
+            target_id=project["id"],
+            target_label=project["title"],
+            summary=f"{STAGE_LABEL.get(stage['name'], stage['name'])} 단계 자동 승인",
+        )
 
         try:
             await pipeline.approve_stage(session, project, stage, actor_id=actor)
