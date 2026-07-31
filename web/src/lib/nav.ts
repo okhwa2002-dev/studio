@@ -23,6 +23,7 @@ export const NAV: NavItem[] = [
   { path: '/admin/projects', label: '전체 프로젝트', icon: '🗂️', adminOnly: true },
   { path: '/admin/notices', label: '공지 관리', icon: '🗞️', adminOnly: true },
   { path: '/admin/faqs', label: 'FAQ 관리', icon: '📖', adminOnly: true },
+  { path: '/admin/logs', label: '활동 기록', icon: '🧾', adminOnly: true },
   { path: '/admin/system', label: '시스템 설정', icon: '🔧', adminOnly: true },
 ]
 
