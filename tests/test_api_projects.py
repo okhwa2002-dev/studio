@@ -181,6 +181,60 @@ async def test_create_uses_openai_when_configured(client, db_session):
     assert body["stages"][0]["provider"] == "openai"
 
 
+async def test_approve_is_recorded_in_the_same_commit(client, db_session):
+    """STAGE_APPROVE 기록이 approve_stage의 커밋과 함께 실제로 커밋됐는지를 본다.
+
+    같은 세션에서 조회만 하면(rollback 없이) 커밋 여부와 무관하게 행이 보인다 —
+    이 세션은 자신의 미커밋 쓰기도 그대로 읽기 때문이다(SAVEPOINT 격리, conftest 참고).
+    그래서 "기록이 있다"만으로는 record()가 pipeline.approve_stage 호출 앞에 있는지
+    뒤에 있는지 구분하지 못한다. rollback()을 걸어 SAVEPOINT 경계 이전(즉 이미 커밋된
+    것)만 살아남게 해야 "같은 커밋에 실렸는가"를 실제로 검증한다
+    (test_core_audit.py::test_record_failure_survives_rollback과 같은 패턴).
+    """
+    await _login(client, db_session, "approve-audit@example.com")
+    pid = (
+        await client.post("/api/projects", json={"title": "쇼츠 2", "topic": "바다"})
+    ).json()["project"]["id"]
+    await client.post(f"/api/projects/{pid}/stages/script/run")
+    stage_id = (await client.get(f"/api/projects/{pid}")).json()["stages"][0]["id"]
+    await _drain(db_session, stage_id)
+
+    resp = await client.post(f"/api/projects/{pid}/stages/script/approve")
+    assert resp.status_code == 200
+
+    await db_session.rollback()
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT * FROM audit_logs WHERE action = 'STAGE_APPROVE'")
+    assert len(rows) == 1
+    assert rows[0]["target_type"] == "PROJECT"
+    assert rows[0]["target_id"] == pid
+    assert "대본" in rows[0]["summary"]
+
+
+async def test_regenerate_is_recorded_in_the_same_commit(client, db_session):
+    """STAGE_REGENERATE 버전. test_approve_is_recorded_in_the_same_commit의 독스트링 참고."""
+    await _login(client, db_session, "regen-audit@example.com")
+    pid = (
+        await client.post("/api/projects", json={"title": "쇼츠 4", "topic": "산"})
+    ).json()["project"]["id"]
+    await client.post(f"/api/projects/{pid}/stages/script/run")
+    stage_id = (await client.get(f"/api/projects/{pid}")).json()["stages"][0]["id"]
+    await _drain(db_session, stage_id)
+
+    resp = await client.post(f"/api/projects/{pid}/stages/script/regenerate")
+    assert resp.status_code == 202
+
+    await db_session.rollback()
+
+    conn = await raw_connection(db_session)
+    rows = await conn.fetch("SELECT * FROM audit_logs WHERE action = 'STAGE_REGENERATE'")
+    assert len(rows) == 1
+    assert rows[0]["target_type"] == "PROJECT"
+    assert rows[0]["target_id"] == pid
+    assert "대본" in rows[0]["summary"]
+
+
 async def test_create_and_stage_actions_are_recorded(client, db_session):
     await _login(client, db_session, "project-audit@example.com")
 
