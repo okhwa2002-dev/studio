@@ -1,4 +1,9 @@
+import logging
 import secrets
+
+from app.core.email import send_email
+
+logger = logging.getLogger(__name__)
 
 RESET_CODE_TTL_MINUTES = 10
 MAX_RESET_ATTEMPTS = 5
@@ -13,18 +18,29 @@ def generate_reset_code() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
 
-def deliver_reset_code(email: str, code: str) -> None:
-    """생성된 코드를 사용자에게 전달한다 — 이 함수가 이 기능의 유일한 전달 경계다.
+_RESET_SUBJECT = "[Studio] 비밀번호 재설정 인증코드"
 
-    지금은 아무것도 하지 않는다. 코드는 이미 password_reset_codes 테이블에 저장돼
-    있고(request 엔드포인트가 커밋한다), 개발 중에는 그 테이블을 직접 조회해 code를
-    확인한다:
 
-        SELECT code FROM password_reset_codes
-        WHERE user_id = (SELECT id FROM users WHERE email = '...')
-        ORDER BY id DESC LIMIT 1;
+async def deliver_reset_code(email: str, code: str) -> None:
+    """생성된 코드를 사용자에게 이메일로 전달한다 — 이 기능의 유일한 전달 경계다.
 
-    ⚠️ 운영 배포 전 반드시 이 몸통을 '등록된 이메일함으로 코드를 보내는' 실제 이메일
-    발송으로 채워야 한다. 그 전까지는 실사용자가 코드를 받을 방법이 없어(DB를 볼 수
-    있는 사람만 재설정 가능) 자가 재설정 기능으로 동작하지 않는다.
+    라우터가 이 함수를 BackgroundTasks로 예약한다(응답 이후에 실행된다). 동기로
+    부르면 가입된 이메일일 때만 응답이 수 초 느려져, 응답 본문을 통일해 막아 둔
+    계정 열거가 응답 시간으로 새어나간다.
+
+    발송 실패는 삼킨다. 응답은 이미 나갔고, 실패를 알릴 방법이 있더라도 그 신호가
+    곧 계정 존재를 알려준다. 실패한 코드는 10분 뒤 만료되고 정리 잡이 지우며,
+    사용자가 다시 요청하면 새 코드가 나가므로 재시도할 이유도 없다.
+
+    로그에 코드·본문을 남기지 않는다 — 수신자·예외만 남긴다.
     """
+    body = (
+        f"인증코드: {code}\n"
+        "\n"
+        f"이 코드는 {RESET_CODE_TTL_MINUTES}분 뒤에 만료됩니다.\n"
+        "본인이 요청하지 않았다면 이 메일을 무시하세요.\n"
+    )
+    try:
+        await send_email(to=email, subject=_RESET_SUBJECT, body=body)
+    except Exception:
+        logger.warning("비밀번호 재설정 메일 발송 실패: to=%s", email, exc_info=True)
