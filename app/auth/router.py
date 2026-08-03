@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 import asyncpg
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -422,7 +422,11 @@ class PasswordResetRequest(BaseModel):
 
 
 @router.post("/password-reset/request")
-async def password_reset_request(body: PasswordResetRequest, db: AsyncSession = Depends(get_db)):
+async def password_reset_request(
+    body: PasswordResetRequest,
+    background: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     email = body.email.strip().lower()
     conn = await raw_connection(db)
     row = await queries.find_by_email(conn, email=email)
@@ -444,8 +448,11 @@ async def password_reset_request(body: PasswordResetRequest, db: AsyncSession = 
             updated_at=now,
         )
         await db.commit()
-        # 커밋 이후에 전달한다 — 저장이 롤백됐는데 코드만 나가는 일이 없도록.
-        deliver_reset_code(email, code)
+        # 커밋 이후에 예약한다 — 저장이 롤백됐는데 코드만 나가는 일이 없도록.
+        # 응답 이후에 실행되므로 SMTP 지연이 응답 시간에 섞이지 않는다. 동기로 보내면
+        # 가입된 이메일일 때만 느려져, 통일한 응답 본문으로 막아 둔 계정 열거가
+        # 응답 시간으로 새어나간다.
+        background.add_task(deliver_reset_code, email, code)
 
     return {"message": _RESET_REQUEST_MESSAGE}
 
