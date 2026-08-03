@@ -21,6 +21,7 @@ from app.api.notices import router as notices_router
 from app.api.projects import router as projects_router
 from app.auth.admin_router import router as admin_users_router
 from app.auth.router import router as auth_router
+from app.config import get_settings
 from app.core.cleanup import get_cleanup_job
 from app.core.worker import get_worker
 from app.runtime_settings import EnvSettingsError, check_env_defaults
@@ -42,6 +43,14 @@ async def lifespan(app: FastAPI):
     except EnvSettingsError as exc:
         logger.error("%s", exc)
         raise
+
+    # 운영에서 SMTP_HOST를 빠뜨리면 메일이 조용히 파일로 간다. 기동을 막지는 않는다 —
+    # 개발 환경에서는 그것이 정상 경로다. 대신 그 상태를 기동 로그에 드러낸다.
+    if not get_settings().smtp_host:
+        logger.warning(
+            "SMTP_HOST가 없어 메일을 보내지 않고 파일로 저장합니다: %s/mail",
+            get_settings().log_dir,
+        )
 
     # 단계 실행은 요청이 아니라 이 워커가 맡는다. 기동 시 고아 상태도 여기서 정리된다.
     worker = get_worker()
