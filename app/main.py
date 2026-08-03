@@ -129,7 +129,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     # 않고 소스에 고정된 디폴트 에러로 응답한다. 실제 원인은 로그로 남긴다.
     logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
     # 로그는 로테이션되고 서버에 들어가야 볼 수 있다. 무엇이 얼마나 자주 나는지는
-    # 테이블에서 본다. record_error는 던지지 않으므로 응답 경로에 영향이 없다.
+    # 테이블에서 본다. record_error는 Exception을 던지지 않으므로 응답 경로에
+    # 영향이 없다(요청이 취소된 경우의 CancelledError만 그대로 지나간다 — 그때는
+    # 응답 자체가 이미 죽었다).
     await record_error(SOURCE_HTTP, exc, context=f"{request.method} {request.url.path}")
     return JSONResponse(
         status_code=DEFAULT_ERROR.status_code,

@@ -31,6 +31,12 @@ RECORD_TIMEOUT_SEC = 2.0
 # 잡으면 테스트가 개발자의 실제 DB에 쓴다.
 _session_factory = None
 
+# 앱 패키지 루트(.../app). 트레이스백에서 우리 코드 프레임을 고를 때 기준으로 쓴다.
+# 경로 파트에 "app"이 있는지로 판별하면 Docker의 관용적인 WORKDIR /app 배포에서
+# /app/.venv/lib/... 안의 라이브러리 프레임까지 전부 앱 코드로 잡혀, location이
+# SDK 내부를 가리키는 쓸모없는 값이 된다.
+_APP_ROOT = Path(__file__).resolve().parent.parent
+
 
 def set_session_factory(factory) -> None:
     """테스트 전용 — 기록이 쓸 세션 팩토리를 갈아끼운다."""
@@ -48,6 +54,19 @@ def _clip(value: str, limit: int) -> str:
     return value[:limit]
 
 
+def _is_app_frame(filename: str) -> bool:
+    """이 프레임이 app 패키지 안의 우리 코드인가.
+
+    <string>·frozen 프레임처럼 실제 경로가 아닌 값도 들어오므로 넓게 잡아 삼킨다 —
+    위치를 못 고르는 것이 기록 자체를 실패시키면 안 된다.
+    """
+    try:
+        Path(filename).resolve().relative_to(_APP_ROOT)
+    except Exception:
+        return False
+    return True
+
+
 def _location(exc: BaseException) -> str:
     """트레이스백에서 앱 코드의 '디렉토리/파일:줄'만 뽑는다.
 
@@ -58,7 +77,7 @@ def _location(exc: BaseException) -> str:
     frames = traceback.extract_tb(exc.__traceback__)
     if not frames:
         return "unknown"
-    app_frames = [f for f in frames if "app" in Path(f.filename).parts]
+    app_frames = [f for f in frames if _is_app_frame(f.filename)]
     frame = app_frames[-1] if app_frames else frames[-1]
     path = Path(frame.filename)
     return f"{path.parent.name}/{path.name}:{frame.lineno}"
@@ -86,8 +105,13 @@ async def _write(source: str, exc_type: str, location: str, message: str, contex
 async def record_error(source: str, exc: BaseException, context: str | None = None) -> None:
     """에러를 error_logs에 지문 단위로 집계한다.
 
-    **어떤 경우에도 예외를 밖으로 내보내지 않는다.** 에러를 기록하다 실패해서 원래
-    응답이 더 망가지면 본말전도다.
+    **예외(Exception)를 밖으로 내보내지 않는다.** 에러를 기록하다 실패해서 원래
+    응답이 더 망가지면 본말전도다. 다만 취소(CancelledError)는 그대로 전파한다 —
+    BaseException이라 아래 except에 걸리지 않고, 걸리게 만들면 종료 신호를 삼켜
+    worker.stop()·cleanup_job.stop()이 끝나지 않는다.
+
+    2초 상한도 best-effort다. wait_for는 만료 시 태스크를 취소한 뒤 되감기가 끝나기를
+    기다리므로, 병목이 커넥션 획득이 아니라 세션 정리에 있으면 조금 넘길 수 있다.
 
     자기 세션을 연다. 백그라운드 태스크·워커·정리 잡에서 불리는데, FastAPI 0.106부터
     yield 의존성의 정리 코드가 백그라운드 태스크보다 먼저 돌아 요청 세션은 이미 닫혀
