@@ -34,7 +34,7 @@ export type AuditLogQuery = {
   size?: number
 }
 
-// 백엔드 AuditAction(app/constants.py)의 26종과 1:1이다. 행위를 추가하면 여기에도
+// 백엔드 AuditAction(app/constants.py)의 27종과 1:1이다. 행위를 추가하면 여기에도
 // 라벨을 넣어야 필터 선택지에 나타난다 — 그래서 라벨 없는 코드값이 화면에 뜰 수 없다.
 export const AUDIT_ACTION_LABEL: Record<string, string> = {
   REGISTER: '회원 가입',
@@ -43,6 +43,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   ACCOUNT_LOCKED: '계정 잠김',
   LOGOUT: '로그아웃',
   PASSWORD_CHANGE: '비밀번호 변경',
+  PASSWORD_RESET: '비밀번호 재설정',
   TOKEN_REUSE_DETECTED: '토큰 재사용 감지',
   USER_APPROVE: '가입 승인',
   USER_REJECT: '가입 거절',

@@ -18,6 +18,7 @@ _AUDITED = {
     ("POST", "/api/auth/login"),
     ("POST", "/api/auth/logout"),
     ("POST", "/api/auth/change-password"),
+    ("POST", "/api/auth/password-reset/confirm"),
     ("POST", "/api/admin/users/{user_id}/approve"),
     ("POST", "/api/admin/users/{user_id}/reject"),
     ("POST", "/api/admin/users/{user_id}/unlock"),
@@ -46,6 +47,14 @@ _EXEMPT = {
     # 토큰 자동 갱신도 같은 이유다. 단 그 안의 재사용 감지(탈취 신호)는
     # TOKEN_REUSE_DETECTED로 반드시 기록한다.
     ("POST", "/api/auth/refresh"),
+    # 비밀번호 재설정 코드 요청. 일부러 남기지 않는다 — 응답을 계정 존재와 무관하게
+    # 통일하는 엔드포인트라 기록 자체가 "그 이메일이 존재한다"는 정보를 남기고,
+    # 무차별 요청 시 로그를 뒤덮는다. 실제 재설정(성공)은 confirm에서 PASSWORD_RESET로
+    # 기록하고, 코드 추측은 attempts 한도(5회)로 막는다.
+    ("POST", "/api/auth/password-reset/request"),
+    # 코드 확인 단계(화면 2단계용). 코드가 맞는지만 보고 아무것도 바꾸지 않는다.
+    # request와 같은 이유로 기록하지 않는다 — 실제 변경은 confirm에서 기록된다.
+    ("POST", "/api/auth/password-reset/verify"),
 }
 
 

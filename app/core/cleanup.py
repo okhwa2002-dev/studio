@@ -44,6 +44,24 @@ async def _purge_expired_tokens(session) -> None:
     await session.commit()
 
 
+async def _purge_expired_reset_codes(session) -> None:
+    """만료된 비밀번호 재설정 코드를 지운다.
+
+    refresh 토큰과 달리 소비된 행을 보존할 이유가 없다. 그쪽은 폐기 토큰의 재사용을
+    탈취로 잡는 경보가 행의 존재에 의존하지만, 재설정 코드에는 대응하는 경보가 없다 —
+    소비됐든 지워졌든 _resolve_reset_code는 똑같은 INVALID_RESET_CODE를 던진다.
+
+    시도 한도(5회)도 무력화되지 않는다. 삭제는 만료 후에만 일어나 살아 있는 코드의
+    attempts는 건드리지 않고, 공격자가 새로 요청해봐야 새 난수 코드를 받을 뿐이다.
+
+    건수를 로그로 남기지 않는 것은 _purge_expired_tokens와 같은 이유다 — 10분마다
+    갈리는 부산물이라 건수에 운영 신호가 없다.
+    """
+    conn = await raw_connection(session)
+    await queries.delete_expired_reset_codes(conn, now=now_local())
+    await session.commit()
+
+
 async def _purge_project(session, project_id: int, title: str | None) -> None:
     """프로젝트 하나를 행·파일까지 완전히 지운다.
 
@@ -121,6 +139,9 @@ async def run_once(session_factory=None) -> None:
 
     async with factory() as session:
         await _purge_expired_tokens(session)
+
+    async with factory() as session:
+        await _purge_expired_reset_codes(session)
 
     async with factory() as session:
         await _purge_old_audit_logs(session)

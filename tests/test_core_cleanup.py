@@ -311,3 +311,66 @@ async def test_audit_logs_older_than_retention_are_purged(db_session):
     conn = await raw_connection(db_session)
     remaining = await conn.fetch("SELECT id FROM audit_logs")
     assert [r["id"] for r in remaining] == [fresh.id]
+
+
+# ─── 재설정 코드 정리 ───
+
+
+async def _add_reset_code(session, user_id: int, *, code: str, expires_at, consumed=False):
+    conn = await raw_connection(session)
+    now = now_local()
+    code_id = await queries.insert_reset_code(
+        conn, user_id=user_id, code=code, expires_at=expires_at,
+        created_at=now, updated_at=now,
+    )
+    if consumed:
+        await queries.consume_reset_code(conn, id=code_id, consumed_at=now, updated_at=now)
+    await session.commit()
+    return code_id
+
+
+async def _reset_code_exists(session, code: str) -> bool:
+    conn = await raw_connection(session)
+    row = await conn.fetchrow("SELECT id FROM password_reset_codes WHERE code = $1", code)
+    return row is not None
+
+
+async def test_expired_reset_code_is_deleted(db_session):
+    user = await _add_user(db_session, "cl-code-exp@example.com")
+    await _add_reset_code(
+        db_session, user.id, code="111111", expires_at=now_local() - timedelta(minutes=1)
+    )
+
+    await cleanup.run_once(_factory(db_session))
+
+    assert not await _reset_code_exists(db_session, "111111")
+
+
+async def test_live_reset_code_is_kept(db_session):
+    """진행 중인 재설정을 잡이 끊으면 안 된다."""
+    user = await _add_user(db_session, "cl-code-live@example.com")
+    await _add_reset_code(
+        db_session, user.id, code="222222", expires_at=now_local() + timedelta(minutes=10)
+    )
+
+    await cleanup.run_once(_factory(db_session))
+
+    assert await _reset_code_exists(db_session, "222222")
+
+
+async def test_consumed_but_unexpired_reset_code_is_kept(db_session):
+    """삭제 조건은 expires_at 하나다.
+
+    소비 여부를 조건에 넣지 않는 이유는 코드 TTL이 10분이라 소비된 코드도 곧 만료로
+    걸리기 때문이다(설계 2.1). 조건이 늘면 "왜 이 행이 남아 있나"를 만료 시각 하나로
+    설명할 수 없게 된다 — 이 테스트가 그 단순함을 고정한다.
+    """
+    user = await _add_user(db_session, "cl-code-used@example.com")
+    await _add_reset_code(
+        db_session, user.id, code="333333",
+        expires_at=now_local() + timedelta(minutes=10), consumed=True,
+    )
+
+    await cleanup.run_once(_factory(db_session))
+
+    assert await _reset_code_exists(db_session, "333333")

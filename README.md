@@ -121,6 +121,22 @@ Vite dev 서버가 `/auth`, `/admin/users`, `/health` 요청을 `http://localhos
 
 > 이 기능은 `audit_logs` 테이블에 의존한다. 마이그레이션을 적용하지 않은 채 새 코드를 띄우면 **로그인부터 500**이 난다. 배포 시 `npm run migrate`를 먼저 돌릴 것.
 
+### 비밀번호 재설정
+
+로그인 화면의 **"비밀번호를 잊으셨나요?"** 로 여는 3단계 팝업이다(이메일 → 인증코드 확인 → 새 비밀번호). 6자리 코드는 `password_reset_codes` 테이블에 저장되고 10분 뒤 만료된다.
+
+> ⚠️ **지금은 코드가 사용자에게 전달되지 않는다.** `app/auth/password_reset.py`의 `deliver_reset_code()`가 아직 빈 함수라, 사실상 DB를 볼 수 있는 사람만 재설정할 수 있다. **운영 배포 전 반드시 이 함수를 실제 이메일 발송으로 채울 것.** 그 전까지 이 플로우는 개발용 뼈대다.
+
+개발 중에는 테이블에서 코드를 직접 확인한다.
+
+```sql
+SELECT code FROM password_reset_codes
+WHERE user_id = (SELECT id FROM users WHERE email = '...')
+ORDER BY id DESC LIMIT 1;
+```
+
+만료된 코드는 정리 잡이 하루 한 번 지운다(`app/core/cleanup.py`). 보관 기간 설정은 없다 — 기준이 행 자신의 `expires_at`이다.
+
 ### 동일 출처 규칙 (중요)
 
 인증은 **httpOnly + SameSite=Lax 쿠키**에 의존한다. 이 방식은 프론트와 API가 **같은 출처**일 때만 성립한다.
