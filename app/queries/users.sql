@@ -106,3 +106,12 @@ SET locked_at = NULL,
     updated_at = :updated_at,
     updated_by = :updated_by
 WHERE id = :id;
+
+-- name: clear_lockout_after_reset!
+-- 비밀번호 재설정 성공 시 잠금·실패 횟수를 함께 푼다. 비밀번호를 잊어 연속 실패로
+-- 잠긴 계정이 재설정의 흔한 대상이라, 재설정 직후 바로 로그인할 수 있어야 한다.
+UPDATE users
+SET failed_login_count = 0,
+    locked_at = NULL,
+    updated_at = :updated_at
+WHERE id = :id;

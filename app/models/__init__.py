@@ -4,6 +4,7 @@ from app.models.base import BaseEntity
 from app.models.faq import Faq
 from app.models.notice import Notice
 from app.models.notice_read import NoticeRead
+from app.models.password_reset_code import PasswordResetCode
 from app.models.project import Project
 from app.models.refresh_token import RefreshToken
 from app.models.stage import Stage
@@ -17,6 +18,7 @@ __all__ = [
     "Faq",
     "Notice",
     "NoticeRead",
+    "PasswordResetCode",
     "Project",
     "RefreshToken",
     "Stage",

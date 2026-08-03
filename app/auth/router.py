@@ -6,6 +6,12 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
+from app.auth.password_reset import (
+    MAX_RESET_ATTEMPTS,
+    RESET_CODE_TTL_MINUTES,
+    deliver_reset_code,
+    generate_reset_code,
+)
 from app.auth.security import (
     ACCESS_TOKEN_MINUTES,
     REFRESH_TOKEN_DAYS,
@@ -403,4 +409,139 @@ async def change_password(
 
     access_token = create_access_token(user["id"], user["role"])
     _set_auth_cookies(response, access_token, refresh_token)
+    return {"status": "ok"}
+
+
+_RESET_REQUEST_MESSAGE = "인증코드를 발송했습니다."
+# 재설정 코드를 발급하는 상태. DISABLED/REJECTED는 되찾아도 로그인 못 하므로 발급하지 않는다.
+_RESET_ALLOWED_STATUSES = (UserStatus.ACTIVE, UserStatus.PENDING)
+
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+
+@router.post("/password-reset/request")
+async def password_reset_request(body: PasswordResetRequest, db: AsyncSession = Depends(get_db)):
+    email = body.email.strip().lower()
+    conn = await raw_connection(db)
+    row = await queries.find_by_email(conn, email=email)
+
+    # 계정 존재/상태와 무관하게 응답은 항상 동일하다(계정 열거 방지).
+    if row is not None and row["status"] in _RESET_ALLOWED_STATUSES:
+        now = now_local()
+        # 활성 코드는 사용자당 1개 — 새 코드 발급 전 이전 미소비 코드를 무효화한다.
+        await queries.consume_active_reset_codes_for_user(
+            conn, user_id=row["id"], consumed_at=now, updated_at=now
+        )
+        code = generate_reset_code()
+        await queries.insert_reset_code(
+            conn,
+            user_id=row["id"],
+            code=code,
+            expires_at=now + timedelta(minutes=RESET_CODE_TTL_MINUTES),
+            created_at=now,
+            updated_at=now,
+        )
+        await db.commit()
+        # 커밋 이후에 전달한다 — 저장이 롤백됐는데 코드만 나가는 일이 없도록.
+        deliver_reset_code(email, code)
+
+    return {"message": _RESET_REQUEST_MESSAGE}
+
+
+_INVALID_RESET_CODE = AppError(400, "INVALID_RESET_CODE", "코드가 올바르지 않거나 만료되었습니다.")
+
+
+async def _resolve_reset_code(db: AsyncSession, conn, email: str, code: str, now):
+    """이메일+코드를 검증하고 (user, code_row)를 돌려준다.
+
+    실패(계정 없음·코드 없음·만료·불일치)는 원인 불문 같은 400으로 던진다
+    (계정 존재·코드 상태를 흘리지 않는다). 코드가 틀리면 시도 횟수를 올리고,
+    한도에 도달하면 코드를 무효화한 뒤 그 변경만 커밋하고 던진다.
+
+    코드를 **소비하지는 않는다** — 확인(verify)과 변경(confirm) 두 단계가 같은
+    코드로 이 함수를 통과하며, 실제 소비는 confirm의 비밀번호 변경 성공 시점에 한다.
+    """
+    email = email.strip().lower()
+    user = await queries.find_by_email(conn, email=email)
+    if user is None:
+        raise _INVALID_RESET_CODE
+
+    code_row = await queries.find_active_reset_code(conn, user_id=user["id"])
+    if code_row is None:
+        raise _INVALID_RESET_CODE
+
+    if code_row["expires_at"] < now:
+        raise _INVALID_RESET_CODE
+
+    # 코드는 6자리 문자열이다. 앞뒤 공백만 정리해 그대로 비교한다(앞자리 0 보존).
+    if code.strip() != code_row["code"]:
+        await queries.increment_reset_attempts(conn, id=code_row["id"], updated_at=now)
+        # code_row["attempts"]는 증가 전 값 — 이번 실패까지 더하면 +1이다. 한도 도달 시 무효화.
+        if code_row["attempts"] + 1 >= MAX_RESET_ATTEMPTS:
+            await queries.consume_reset_code(
+                conn, id=code_row["id"], consumed_at=now, updated_at=now
+            )
+        await db.commit()
+        raise _INVALID_RESET_CODE
+
+    return user, code_row
+
+
+class PasswordResetVerify(BaseModel):
+    email: str
+    code: str
+
+
+@router.post("/password-reset/verify")
+async def password_reset_verify(body: PasswordResetVerify, db: AsyncSession = Depends(get_db)):
+    # 코드가 맞는지만 확인한다(소비·비밀번호 변경 없음). 화면의 "인증코드 확인" 단계 전용이다.
+    # 실제 변경은 confirm이 같은 코드를 다시 검증한 뒤 수행하므로, 이 단계를 건너뛰어도 안전하다.
+    conn = await raw_connection(db)
+    await _resolve_reset_code(db, conn, body.email, body.code, now_local())
+    return {"status": "ok"}
+
+
+class PasswordResetConfirm(BaseModel):
+    email: str
+    code: str
+    new_password: str
+
+
+@router.post("/password-reset/confirm")
+async def password_reset_confirm(
+    body: PasswordResetConfirm, request: Request, db: AsyncSession = Depends(get_db)
+):
+    conn = await raw_connection(db)
+    now = now_local()
+    user, code_row = await _resolve_reset_code(db, conn, body.email, body.code, now)
+
+    # 코드 일치 — 비밀번호 정책 검증 후 변경. 정책 미달이면 코드를 그대로 두어(소비·증가 없음)
+    # 더 긴 비밀번호로 곧바로 다시 시도할 수 있게 한다.
+    min_len = (await get_runtime_settings(conn)).password_min_len
+    if len(body.new_password) < min_len:
+        raise AppError(400, "WEAK_PASSWORD", f"새 비밀번호는 {min_len}자 이상이어야 합니다.")
+
+    await queries.update_password(
+        conn,
+        id=user["id"],
+        password_hash=hash_password(body.new_password),
+        updated_at=now,
+        updated_by=user["id"],
+    )
+    await queries.consume_reset_code(conn, id=code_row["id"], consumed_at=now, updated_at=now)
+    await queries.clear_lockout_after_reset(conn, id=user["id"], updated_at=now)
+    await queries.revoke_all_for_user(conn, user_id=user["id"], revoked_at=now, updated_at=now)
+    await audit.record(
+        conn,
+        action=AuditAction.PASSWORD_RESET,
+        request=request,
+        actor=user,
+        target_type=AuditTarget.USER,
+        target_id=user["id"],
+        target_label=user["name"],
+        summary="비밀번호 재설정 — 코드 인증, 전 세션 폐기",
+    )
+    await db.commit()
     return {"status": "ok"}
