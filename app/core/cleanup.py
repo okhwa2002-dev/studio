@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from app.constants import AuditAction, AuditTarget
 from app.core import audit
+from app.core.error_log import SOURCE_CLEANUP, record_error
 from app.db import async_session_maker, raw_connection
 from app.queries import queries
 from app.utils import storage
@@ -163,8 +164,9 @@ async def run_once(session_factory=None) -> None:
             async with factory() as session:
                 await _purge_project(session, project_id, title)
             purged += 1
-        except Exception:
+        except Exception as exc:
             logger.exception("프로젝트 완전 삭제 실패: project=%s", project_id)
+            await record_error(SOURCE_CLEANUP, exc, context=f"project={project_id}")
 
     if purged:
         logger.info("보관 기간이 지난 프로젝트 %d건을 완전히 삭제했습니다.", purged)
@@ -198,9 +200,10 @@ class CleanupJob:
         while True:
             try:
                 await run_once(self._session_factory)
-            except Exception:
+            except Exception as exc:
                 # 정리 실패가 앱을 죽이거나 다음 주기를 멈추면 안 된다(워커 _loop과 같은 방침).
                 logger.exception("정리 잡 실행 중 처리되지 않은 예외")
+                await record_error(SOURCE_CLEANUP, exc)
             await asyncio.sleep(PURGE_INTERVAL_SEC)
 
 

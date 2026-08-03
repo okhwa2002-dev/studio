@@ -2,6 +2,7 @@ import logging
 import secrets
 
 from app.core.email import send_email
+from app.core.error_log import SOURCE_EMAIL, record_error
 
 logger = logging.getLogger(__name__)
 
@@ -42,5 +43,8 @@ async def deliver_reset_code(email: str, code: str) -> None:
     )
     try:
         await send_email(to=email, subject=_RESET_SUBJECT, body=body)
-    except Exception:
+    except Exception as exc:
         logger.warning("비밀번호 재설정 메일 발송 실패: to=%s", email, exc_info=True)
+        # 사용자에게도 관리자에게도 알리지 않는 실패다(계정 열거 방지). 테이블이
+        # 유일한 흔적이므로 여기 남긴다. 인증코드는 넘기지 않는다.
+        await record_error(SOURCE_EMAIL, exc, context=f"to={email}")
