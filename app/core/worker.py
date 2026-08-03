@@ -4,6 +4,7 @@ import logging
 from app.config import get_settings
 from app.constants import STAGE_LABEL, AuditAction, AuditTarget, StageStatus
 from app.core import audit, events, pipeline, views
+from app.core.error_log import SOURCE_WORKER, record_error
 from app.db import async_session_maker, raw_connection
 from app.queries import queries
 from app.utils.errors import AppError
@@ -57,9 +58,10 @@ class StageWorker:
             stage_id = await self._queue.get()
             try:
                 await self.run_one(stage_id)
-            except Exception:
+            except Exception as exc:
                 # 한 단계의 실패가 워커 루프를 죽이면 안 된다.
                 logger.exception("단계 실행 중 처리되지 않은 예외: stage=%s", stage_id)
+                await record_error(SOURCE_WORKER, exc, context=f"stage={stage_id}")
             finally:
                 self._queue.task_done()
 
@@ -117,10 +119,13 @@ class StageWorker:
                 events.publish(project["id"], views.stage_event(project, updated))
                 try:
                     await self._chain_if_auto(session, project, updated, actor)
-                except Exception:
+                except Exception as exc:
                     # _chain_if_auto의 실패를 run_one 실패와 구분해서 기록한다 — 안 그러면
                     # 이미 성공·커밋된 이 단계가 _loop의 핸들러에 "실행 실패"로 오기록된다.
                     logger.exception("자동 진행 연쇄 실패: stage=%s", stage_id)
+                    await record_error(
+                        SOURCE_WORKER, exc, context=f"자동 진행 연쇄 stage={stage_id}"
+                    )
             finally:
                 # RUNNING 커밋 이후 여기서 예외(DB 오류)나 취소(stop()의 유예 이후
                 # CancelledError)가 나도 진행률 잔재만은 반드시 지운다 — 안 지우면 죽은

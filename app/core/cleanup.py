@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from app.constants import AuditAction, AuditTarget
 from app.core import audit
+from app.core.error_log import SOURCE_CLEANUP, record_error
 from app.db import async_session_maker, raw_connection
 from app.queries import queries
 from app.utils import storage
@@ -24,6 +25,11 @@ PROJECT_RETENTION_DAYS = 30
 # .env로 빼면 기동 시 범위 검증(check_env_defaults)까지 붙어야 하고, 관리자가
 # 이 값을 바꿀 이유가 아직 없다. 필요해지면 runtime_settings로 올린다.
 AUDIT_RETENTION_DAYS = 90
+
+# 에러 로그 보관 기간. 감사 로그(90일)보다 짧은 이유는 성격이 달라서다 — 감사 로그는
+# "누가 무엇을 했는가"의 기록이라 나중에 되짚을 일이 있지만, 에러는 고쳐지면 그만이고
+# 30일이면 주기적 장애도 한 번은 잡힌다.
+ERROR_RETENTION_DAYS = 30
 
 
 async def _purge_expired_tokens(session) -> None:
@@ -129,6 +135,25 @@ async def _purge_old_audit_logs(session) -> None:
         logger.info("보관 기간이 지난 활동 기록 %d건을 삭제했습니다.", deleted)
 
 
+async def _purge_old_error_logs(session) -> None:
+    """보관 기간이 지난 에러 로그를 지운다.
+
+    기준이 updated_at(마지막 발생)인 것이 핵심이다. created_at으로 지우면 오래전에
+    처음 났지만 지금도 나고 있는 에러가 사라진다 — 가장 오래 방치된, 그래서 가장 봐야 할
+    항목이 먼저 지워지는 셈이다.
+
+    건수를 로그로 남기는 것은 _purge_old_audit_logs와 같은 이유다. 이 테이블은 지문
+    단위라 행 수가 적어, 지워진 건수에 "얼마나 다양한 에러가 있었나"는 운영 신호가 있다.
+    """
+    conn = await raw_connection(session)
+    before = now_local() - timedelta(days=ERROR_RETENTION_DAYS)
+    status = await queries.delete_old_error_logs(conn, before=before)
+    await session.commit()
+    deleted = _affected(status)
+    if deleted:
+        logger.info("보관 기간이 지난 에러 로그 %d건을 삭제했습니다.", deleted)
+
+
 async def run_once(session_factory=None) -> None:
     """정리를 한 번 수행한다.
 
@@ -147,6 +172,9 @@ async def run_once(session_factory=None) -> None:
         await _purge_old_audit_logs(session)
 
     async with factory() as session:
+        await _purge_old_error_logs(session)
+
+    async with factory() as session:
         conn = await raw_connection(session)
         before = now_local() - timedelta(days=PROJECT_RETENTION_DAYS)
         # 제목까지 함께 읽는다 — 행을 지운 뒤에는 감사 기록의 target_label을 채울 수 없다.
@@ -163,8 +191,9 @@ async def run_once(session_factory=None) -> None:
             async with factory() as session:
                 await _purge_project(session, project_id, title)
             purged += 1
-        except Exception:
+        except Exception as exc:
             logger.exception("프로젝트 완전 삭제 실패: project=%s", project_id)
+            await record_error(SOURCE_CLEANUP, exc, context=f"project={project_id}")
 
     if purged:
         logger.info("보관 기간이 지난 프로젝트 %d건을 완전히 삭제했습니다.", purged)
@@ -198,9 +227,10 @@ class CleanupJob:
         while True:
             try:
                 await run_once(self._session_factory)
-            except Exception:
+            except Exception as exc:
                 # 정리 실패가 앱을 죽이거나 다음 주기를 멈추면 안 된다(워커 _loop과 같은 방침).
                 logger.exception("정리 잡 실행 중 처리되지 않은 예외")
+                await record_error(SOURCE_CLEANUP, exc)
             await asyncio.sleep(PURGE_INTERVAL_SEC)
 
 

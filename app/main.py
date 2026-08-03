@@ -23,6 +23,7 @@ from app.auth.admin_router import router as admin_users_router
 from app.auth.router import router as auth_router
 from app.config import get_settings
 from app.core.cleanup import get_cleanup_job
+from app.core.error_log import SOURCE_HTTP, record_error
 from app.core.worker import get_worker
 from app.runtime_settings import EnvSettingsError, check_env_defaults
 from app.utils.errors import DEFAULT_ERROR, AppError
@@ -127,6 +128,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     # AppError가 아닌, 정말 예상 못한 예외. 원본 예외 내용을 응답에 노출하지
     # 않고 소스에 고정된 디폴트 에러로 응답한다. 실제 원인은 로그로 남긴다.
     logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    # 로그는 로테이션되고 서버에 들어가야 볼 수 있다. 무엇이 얼마나 자주 나는지는
+    # 테이블에서 본다. record_error는 Exception을 던지지 않으므로 응답 경로에
+    # 영향이 없다(요청이 취소된 경우의 CancelledError만 그대로 지나간다 — 그때는
+    # 응답 자체가 이미 죽었다).
+    await record_error(SOURCE_HTTP, exc, context=f"{request.method} {request.url.path}")
     return JSONResponse(
         status_code=DEFAULT_ERROR.status_code,
         content={"code": DEFAULT_ERROR.code, "message": DEFAULT_ERROR.message},

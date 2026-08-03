@@ -2,6 +2,7 @@ import json
 import logging
 
 from app.constants import ProjectStatus, StageStatus
+from app.core.error_log import SOURCE_PIPELINE, record_error
 from app.db import raw_connection
 from app.providers.base import StageContext, get_provider, noop_progress
 from app.queries import queries
@@ -132,8 +133,11 @@ async def run_claimed_stage(
         status, output, error = StageStatus.NEEDS_REVIEW, result.output, None
     except AppError as exc:  # validate 실패·PROVIDER_NOT_FOUND 등 친절 메시지 그대로
         status, output, error = StageStatus.FAILED, {}, exc.message
-    except Exception:  # 외부 SDK 오류(429/5xx/파싱 등)는 원문 대신 일반 안내 + 로그
+    except Exception as exc:  # 외부 SDK 오류(429/5xx/파싱 등)는 원문 대신 일반 안내 + 로그
         logger.exception("stage run failed: project=%s stage=%s", project["id"], stage["name"])
+        await record_error(
+            SOURCE_PIPELINE, exc, context=f"project={project['id']} stage={stage['name']}"
+        )
         status, output, error = StageStatus.FAILED, {}, "실행 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
 
     await queries.update_stage_run(

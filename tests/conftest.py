@@ -84,15 +84,38 @@ def reset_events():
     # 이벤트 버스·전역 워커 싱글턴은 프로세스 전역이라 테스트끼리 샌다. 앞뒤로 비운다.
     # worker.reset()이 없으면 get_worker().start()를 쓰는 테스트가 훗날 추가될 때
     # 앞선 테스트들이 module-global asyncio.Queue에 쌓아둔 stage id를 그대로 물려받는다.
-    from app.core import cleanup, events, worker
+    from app.core import cleanup, error_log, events, worker
 
     events.reset()
     worker.reset()
     cleanup.reset()
+    _deny_error_log_db(error_log)
     yield
     events.reset()
     worker.reset()
     cleanup.reset()
+    _deny_error_log_db(error_log)
+
+
+def _deny_error_log_db(error_log) -> None:
+    """record_error가 실제 DB에 쓰지 못하게 막는다.
+
+    error_log.reset()으로 되돌리면 기본값이 app.db.async_session_maker —
+    개발자의 진짜 DB(.env의 DATABASE_URL)에 붙은 팩토리다. 500을 유발하는 테스트는
+    error_sink를 요청하지 않아도 500 핸들러를 타므로, 그대로 두면 스위트가 실 DB의
+    error_logs를 오염시킨다(실제로 test_health.py가 그랬다).
+
+    거부용 팩토리를 심어 두면 그런 테스트는 record_error의 정상 경로("삼키고
+    warning")를 탈 뿐이고, 기록을 검증해야 하는 테스트만 error_sink로 옵트인한다.
+    """
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _no_db():
+        raise RuntimeError("테스트가 error_sink 없이 record_error를 탔다")
+        yield  # pragma: no cover
+
+    error_log.set_session_factory(_no_db)
 
 
 @pytest.fixture(autouse=True)
@@ -122,3 +145,23 @@ def mail_env(tmp_path, monkeypatch):
     get_settings.cache_clear()
     yield tmp_path / "mail"
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def error_sink(db_session):
+    """record_error가 테스트 세션에 쓰게 한다.
+
+    record_error는 기본적으로 app.db.async_session_maker(실제 DB 엔진에 붙은 팩토리)로
+    자기 세션을 연다. 테스트에서 그대로 두면 SAVEPOINT 격리 밖으로 나가 개발자의 실제
+    DB에 쓴다 — worker·cleanup이 session_factory를 주입받는 것과 같은 이유다.
+    """
+    from contextlib import asynccontextmanager
+
+    from app.core import error_log
+
+    @asynccontextmanager
+    async def _make():
+        yield db_session
+
+    error_log.set_session_factory(_make)
+    return db_session
