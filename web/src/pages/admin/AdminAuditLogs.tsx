@@ -102,10 +102,12 @@ export function AdminAuditLogs() {
     {
       header: '행위자',
       cell: (r) => (
-        <div>
-          {r.actor_name && <div>{r.actor_name}</div>}
-          <div className="text-xs text-fg-muted">{r.actor_email ?? '—'}</div>
-        </div>
+        // 이름과 이메일을 한 줄에 둔다. 이메일은 작고 흐리게 남겨 이름이 먼저 읽히게 하고,
+        // baseline 정렬로 크기가 다른 두 텍스트의 밑선을 맞춘다.
+        <span className="inline-flex items-baseline gap-1.5">
+          {r.actor_name && <span>{r.actor_name}</span>}
+          <span className="text-xs text-fg-muted">{r.actor_email ?? '—'}</span>
+        </span>
       ),
     },
     { header: '대상', cell: (r) => r.target_label ?? '—' },
