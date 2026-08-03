@@ -23,3 +23,9 @@ SELECT
 FROM password_reset_requests
 WHERE (email = :email OR client_ip = :client_ip)
   AND created_at > :window_since;
+
+-- name: delete_old_reset_requests!
+-- 정리 잡이 쓴다. cutoff는 가장 긴 rate limit 창(1시간) 이전 — 그보다 오래된 행은
+-- 어떤 판정에도 쓰이지 않는다. 별도 보관 기간 상수를 두지 않는 이유가 이것이다
+-- (기준이 창 자체라 정책 판단이 없다 — 재설정 코드 정리와 같은 방침).
+DELETE FROM password_reset_requests WHERE created_at < :cutoff;

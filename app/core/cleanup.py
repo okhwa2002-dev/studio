@@ -2,6 +2,7 @@ import asyncio
 import logging
 from datetime import timedelta
 
+from app.auth.reset_rate_limit import RESET_REQUEST_WINDOW_MINUTES
 from app.constants import AuditAction, AuditTarget
 from app.core import audit
 from app.db import async_session_maker, raw_connection
@@ -59,6 +60,25 @@ async def _purge_expired_reset_codes(session) -> None:
     """
     conn = await raw_connection(session)
     await queries.delete_expired_reset_codes(conn, now=now_local())
+    await session.commit()
+
+
+async def _purge_old_reset_requests(session) -> None:
+    """rate limit 창을 벗어난 재설정 요청 기록을 지운다.
+
+    창(1시간)보다 오래된 행은 어떤 판정에도 쓰이지 않으므로, 지워도 제한이 느슨해지지
+    않는다. 판정 쿼리가 created_at > window_since로 이미 거르기 때문에 남아 있어도
+    결과는 같다 — 이 정리는 테이블 크기에 상한을 씌우는 것이 전부다.
+
+    잡이 24시간 주기라 그 사이에는 최대 24시간치가 쌓인다. 그래도 판정이 느려지지
+    않는 것은 email·client_ip 인덱스로 좁힌 뒤 세기 때문이다.
+
+    건수를 로그로 남기지 않는 것은 _purge_expired_reset_codes와 같은 이유다 —
+    한 시간마다 갈리는 부산물이라 건수에 운영 신호가 없다.
+    """
+    conn = await raw_connection(session)
+    cutoff = now_local() - timedelta(minutes=RESET_REQUEST_WINDOW_MINUTES)
+    await queries.delete_old_reset_requests(conn, cutoff=cutoff)
     await session.commit()
 
 
@@ -142,6 +162,9 @@ async def run_once(session_factory=None) -> None:
 
     async with factory() as session:
         await _purge_expired_reset_codes(session)
+
+    async with factory() as session:
+        await _purge_old_reset_requests(session)
 
     async with factory() as session:
         await _purge_old_audit_logs(session)

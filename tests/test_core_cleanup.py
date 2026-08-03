@@ -374,3 +374,47 @@ async def test_consumed_but_unexpired_reset_code_is_kept(db_session):
     await cleanup.run_once(_factory(db_session))
 
     assert await _reset_code_exists(db_session, "333333")
+
+
+# ─── 재설정 요청 이력 정리 ───
+
+
+async def test_reset_requests_older_than_the_window_are_purged(db_session):
+    conn = await raw_connection(db_session)
+    old = now_local() - timedelta(minutes=61)
+    await queries.insert_reset_request(
+        conn, email="old@example.com", client_ip="1.1.1.1", created_at=old, updated_at=old
+    )
+    await db_session.commit()
+
+    await cleanup.run_once(_factory(db_session))
+
+    row = await queries.count_recent_reset_requests(
+        conn,
+        email="old@example.com",
+        client_ip="1.1.1.1",
+        cooldown_since=now_local() - timedelta(days=1),
+        window_since=now_local() - timedelta(days=1),
+    )
+    assert row["email_window"] == 0
+
+
+async def test_reset_requests_inside_the_window_are_kept(db_session):
+    """진행 중인 제한을 정리 잡이 풀어주면 안 된다 — 그 순간 폭탄이 다시 열린다."""
+    conn = await raw_connection(db_session)
+    recent = now_local() - timedelta(minutes=5)
+    await queries.insert_reset_request(
+        conn, email="recent@example.com", client_ip="2.2.2.2", created_at=recent, updated_at=recent
+    )
+    await db_session.commit()
+
+    await cleanup.run_once(_factory(db_session))
+
+    row = await queries.count_recent_reset_requests(
+        conn,
+        email="recent@example.com",
+        client_ip="2.2.2.2",
+        cooldown_since=now_local() - timedelta(seconds=60),
+        window_since=now_local() - timedelta(minutes=60),
+    )
+    assert row["email_window"] == 1
