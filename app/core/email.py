@@ -3,6 +3,8 @@ import re
 from email.message import EmailMessage
 from pathlib import Path
 
+import aiosmtplib
+
 from app.config import get_settings
 from app.utils.time import now_local
 
@@ -47,6 +49,21 @@ def _save_to_file(message: EmailMessage) -> Path:
     return path
 
 
+async def _send_via_smtp(message: EmailMessage) -> None:
+    settings = get_settings()
+    # 빈 문자열이 아니라 None을 넘긴다 — 빈 계정으로 AUTH를 시도하면 릴레이가 거절한다.
+    await aiosmtplib.send(
+        message,
+        hostname=settings.smtp_host,
+        port=settings.smtp_port,
+        username=settings.smtp_user or None,
+        password=settings.smtp_password or None,
+        use_tls=settings.smtp_tls == "ssl",          # 465 — 접속부터 암호화
+        start_tls=settings.smtp_tls == "starttls",   # 587 — 평문 접속 후 승격
+        timeout=settings.smtp_timeout_sec,
+    )
+
+
 async def send_email(to: str, subject: str, body: str) -> None:
     """메일 1통을 보낸다.
 
@@ -58,5 +75,8 @@ async def send_email(to: str, subject: str, body: str) -> None:
     하나 더할 뿐 여기는 손대지 않는다.
     """
     message = _build_message(to, subject, body)
-    path = _save_to_file(message)
-    logger.info("SMTP 미설정 — 메일을 파일로 저장했습니다: %s", path)
+    if not get_settings().smtp_host:
+        path = _save_to_file(message)
+        logger.info("SMTP 미설정 — 메일을 파일로 저장했습니다: %s", path)
+        return
+    await _send_via_smtp(message)
