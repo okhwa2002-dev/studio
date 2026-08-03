@@ -12,6 +12,7 @@ from app.auth.password_reset import (
     deliver_reset_code,
     generate_reset_code,
 )
+from app.auth.reset_rate_limit import check_and_record
 from app.auth.security import (
     ACCESS_TOKEN_MINUTES,
     REFRESH_TOKEN_DAYS,
@@ -425,10 +426,25 @@ class PasswordResetRequest(BaseModel):
 async def password_reset_request(
     body: PasswordResetRequest,
     background: BackgroundTasks,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     email = body.email.strip().lower()
     conn = await raw_connection(db)
+
+    # 계정을 조회하기 **전에** 판정한다. 발송이 일어날 때만 제한하면 429가 곧
+    # "그 계정은 존재한다"가 되어, 응답 본문을 통일해 막아 둔 계정 열거가 깨진다.
+    #
+    # IP는 request.client.host만 쓴다 — X-Forwarded-For를 읽지 않는 이유는 감사
+    # 로그(app/core/audit.py)와 같고, 여기서는 더 치명적이다. 프록시가 없는 배포에서
+    # 그 헤더를 믿으면 값만 바꿔가며 IP 축을 통째로 우회할 수 있다.
+    await check_and_record(
+        conn, email, request.client.host if request.client else None, now_local()
+    )
+    # 기록을 즉시 커밋한다. 아래 발송 경로의 커밋은 계정이 있을 때만 일어나므로,
+    # 여기서 커밋하지 않으면 미존재 이메일에 대한 기록이 롤백되어 제한이 무력해진다.
+    await db.commit()
+
     row = await queries.find_by_email(conn, email=email)
 
     # 계정 존재/상태와 무관하게 응답은 항상 동일하다(계정 열거 방지).

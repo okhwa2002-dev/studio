@@ -6,6 +6,7 @@ from app.models.faq import Faq
 from app.models.notice import Notice
 from app.models.notice_read import NoticeRead
 from app.models.password_reset_code import PasswordResetCode
+from app.models.password_reset_request import PasswordResetRequest
 from app.models.project import Project
 from app.models.refresh_token import RefreshToken
 from app.models.stage import Stage
@@ -21,6 +22,7 @@ __all__ = [
     "Notice",
     "NoticeRead",
     "PasswordResetCode",
+    "PasswordResetRequest",
     "Project",
     "RefreshToken",
     "Stage",

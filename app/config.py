@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     smtp_tls: str = "starttls"
     # 백그라운드로 돌더라도 무한정 매달리지 않게 한다.
     smtp_timeout_sec: int = 15
+
+    # --- 비밀번호 재설정 요청 제한 ---
+    # 창은 1시간 고정이다(키 이름에 들어 있다). 세 값 모두 "1시간에 허용하는 최대
+    # 통과 횟수"이고, 판정은 >= 다 — EMAIL_HOURLY=5면 6번째 요청이 거부된다.
+    # 0을 허용하는 것은 쿨다운뿐이다(0 = 쿨다운 끔). 나머지를 0으로 두면 아무도
+    # 재설정할 수 없게 되므로 하한이 1이다.
+    reset_request_cooldown_sec: int = Field(default=60, ge=0, le=3600)
+    reset_request_email_hourly: int = Field(default=5, ge=1, le=100)
+    reset_request_ip_hourly: int = Field(default=20, ge=1, le=1000)
 
     @field_validator("jwt_secret")
     @classmethod

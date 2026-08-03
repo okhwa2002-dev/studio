@@ -2,6 +2,9 @@ import re
 from email import message_from_bytes
 from email.policy import default as default_policy
 
+import pytest
+
+from app.config import get_settings
 from app.db import raw_connection
 from app.models.user import User
 from app.queries import queries
@@ -59,7 +62,20 @@ async def test_request_disabled_account_gets_no_code_but_same_message(client, db
     assert await queries.find_active_reset_code(conn, user_id=uid) is None
 
 
-async def test_request_invalidates_previous_code(client, db_session):
+@pytest.fixture
+def no_cooldown(monkeypatch):
+    """재발송 쿨다운만 끈다.
+
+    같은 이메일로 연달아 두 번 요청해야 하는 테스트가 쓴다. 그 테스트들이 검증하려는
+    것은 코드 무효화이지 쿨다운이 아니므로, 쿨다운을 우회해 원래 의도를 살린다.
+    """
+    monkeypatch.setenv("RESET_REQUEST_COOLDOWN_SEC", "0")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+async def test_request_invalidates_previous_code(client, db_session, no_cooldown):
     uid = await _make_user(db_session, "req-twice@example.com")
     conn = await raw_connection(db_session)
 
@@ -70,6 +86,95 @@ async def test_request_invalidates_previous_code(client, db_session):
 
     # 활성 코드는 항상 최신 1개. 이전 코드는 무효화되어 최신 것과 다른 행이다.
     assert second["id"] != first["id"]
+
+
+# ─── 요청 rate limit ───
+#
+# 엔드포인트 레벨에서는 "계정 존재를 흘리지 않는가"와 "IP를 어디서 읽는가"를 본다.
+# 창·경계 자체의 검증은 tests/test_reset_rate_limit.py가 맡는다.
+
+
+async def test_second_request_within_cooldown_returns_429(client, db_session, mail_env):
+    await _make_user(db_session, "rl-active@example.com")
+
+    first = await client.post(
+        "/api/auth/password-reset/request", json={"email": "rl-active@example.com"}
+    )
+    second = await client.post(
+        "/api/auth/password-reset/request", json={"email": "rl-active@example.com"}
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.json()["code"] == "TOO_MANY_RESET_REQUESTS"
+
+
+async def test_unknown_email_is_rate_limited_too(client, db_session, mail_env):
+    """가입도 안 한 주소를 제한하지 않으면 429가 곧 '계정 있음' 신호가 된다."""
+    first = await client.post(
+        "/api/auth/password-reset/request", json={"email": "rl-nobody@example.com"}
+    )
+    second = await client.post(
+        "/api/auth/password-reset/request", json={"email": "rl-nobody@example.com"}
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+
+
+async def test_429_is_identical_for_existing_and_missing_accounts(client, db_session, mail_env):
+    await _make_user(db_session, "rl-there@example.com")
+
+    for email in ("rl-there@example.com", "rl-not-there@example.com"):
+        await client.post("/api/auth/password-reset/request", json={"email": email})
+
+    blocked = [
+        await client.post("/api/auth/password-reset/request", json={"email": email})
+        for email in ("rl-there@example.com", "rl-not-there@example.com")
+    ]
+
+    assert blocked[0].status_code == blocked[1].status_code == 429
+    assert blocked[0].json() == blocked[1].json()
+
+
+async def test_rate_limited_request_sends_no_mail(client, db_session, mail_env):
+    await _make_user(db_session, "rl-nomail@example.com")
+
+    await client.post("/api/auth/password-reset/request", json={"email": "rl-nomail@example.com"})
+    await client.post("/api/auth/password-reset/request", json={"email": "rl-nomail@example.com"})
+
+    # 첫 요청의 1통뿐 — 거부된 요청은 메일을 만들지 않는다.
+    assert len(list(mail_env.glob("*.eml"))) == 1
+
+
+async def test_x_forwarded_for_is_ignored(client, db_session, mail_env):
+    """헤더를 신뢰하면 값만 바꿔가며 IP 축을 통째로 우회할 수 있다.
+
+    같은 이메일로 두 번 보내되 두 번째에 다른 X-Forwarded-For를 붙인다. 헤더를
+    읽는다면 다른 출처로 보여 통과할 것이고, 무시한다면 쿨다운에 걸려 429가 된다.
+    """
+    await _make_user(db_session, "rl-xff@example.com")
+
+    await client.post("/api/auth/password-reset/request", json={"email": "rl-xff@example.com"})
+    second = await client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "rl-xff@example.com"},
+        headers={"X-Forwarded-For": "203.0.113.7"},
+    )
+
+    assert second.status_code == 429
+
+
+async def test_uppercase_email_shares_the_same_bucket(client, db_session, mail_env):
+    """정규화하지 않으면 대소문자만 바꿔 제한을 무한 우회할 수 있다."""
+    await _make_user(db_session, "rl-case@example.com")
+
+    await client.post("/api/auth/password-reset/request", json={"email": "rl-case@example.com"})
+    second = await client.post(
+        "/api/auth/password-reset/request", json={"email": "RL-Case@Example.com"}
+    )
+
+    assert second.status_code == 429
 
 
 # ─── 인증코드 메일 발송 ───
