@@ -96,7 +96,7 @@ export function PasswordResetModal({
       ) : step === 'code' ? (
         <form onSubmit={verifyCode} className="space-y-4">
           <p className="rounded-md bg-surface-muted px-4 py-2 text-sm text-fg-muted">
-            인증코드를 발송했습니다. 개발 중에는 <strong>password_reset_codes</strong> 테이블에서 코드를 확인하세요.
+            인증코드를 발송했습니다. 메일함을 확인해 주세요.
           </p>
           <FormError message={error} />
           <TextField
