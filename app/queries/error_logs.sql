@@ -15,3 +15,9 @@ ON CONFLICT (fingerprint) DO UPDATE SET
     context    = EXCLUDED.context,
     updated_at = EXCLUDED.updated_at
 RETURNING id;
+
+-- name: delete_old_error_logs!
+-- 기준이 updated_at(마지막 발생)인 것이 핵심이다. created_at으로 지우면 오래전에
+-- 처음 났지만 지금도 나고 있는 에러가 사라진다 — 가장 오래 방치된, 그래서 가장 봐야 할
+-- 항목이 먼저 지워지는 셈이다.
+DELETE FROM error_logs WHERE updated_at < :before;

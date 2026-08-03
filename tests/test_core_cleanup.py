@@ -374,3 +374,48 @@ async def test_consumed_but_unexpired_reset_code_is_kept(db_session):
     await cleanup.run_once(_factory(db_session))
 
     assert await _reset_code_exists(db_session, "333333")
+
+
+# ─── 에러 로그 정리 ───
+
+
+async def _seed_error(db_session, fingerprint, when):
+    conn = await raw_connection(db_session)
+    await queries.upsert_error_log(
+        conn,
+        fingerprint=fingerprint,
+        source="http",
+        exc_type="ValueError",
+        location="core/x.py:1",
+        message="터짐",
+        context=None,
+        now=when,
+    )
+    await db_session.commit()
+
+
+async def _error_fingerprints(db_session):
+    conn = await raw_connection(db_session)
+    return [r["fingerprint"] for r in await conn.fetch("SELECT fingerprint FROM error_logs")]
+
+
+async def test_error_logs_past_retention_are_purged(db_session):
+    await _seed_error(
+        db_session, "old", now_local() - timedelta(days=cleanup.ERROR_RETENTION_DAYS + 1)
+    )
+
+    await cleanup.run_once(_factory(db_session))
+
+    assert await _error_fingerprints(db_session) == []
+
+
+async def test_error_logs_still_occurring_are_kept(db_session):
+    """created_at이 오래됐어도 최근에 또 났으면 남긴다 — 가장 봐야 할 항목이다."""
+    old = now_local() - timedelta(days=cleanup.ERROR_RETENTION_DAYS + 10)
+    await _seed_error(db_session, "recurring", old)
+    # 같은 지문으로 오늘 또 발생 → count 증가 + updated_at 갱신
+    await _seed_error(db_session, "recurring", now_local())
+
+    await cleanup.run_once(_factory(db_session))
+
+    assert await _error_fingerprints(db_session) == ["recurring"]

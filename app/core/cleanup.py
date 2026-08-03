@@ -26,6 +26,11 @@ PROJECT_RETENTION_DAYS = 30
 # 이 값을 바꿀 이유가 아직 없다. 필요해지면 runtime_settings로 올린다.
 AUDIT_RETENTION_DAYS = 90
 
+# 에러 로그 보관 기간. 감사 로그(90일)보다 짧은 이유는 성격이 달라서다 — 감사 로그는
+# "누가 무엇을 했는가"의 기록이라 나중에 되짚을 일이 있지만, 에러는 고쳐지면 그만이고
+# 30일이면 주기적 장애도 한 번은 잡힌다.
+ERROR_RETENTION_DAYS = 30
+
 
 async def _purge_expired_tokens(session) -> None:
     """만료된 refresh token을 지운다.
@@ -130,6 +135,25 @@ async def _purge_old_audit_logs(session) -> None:
         logger.info("보관 기간이 지난 활동 기록 %d건을 삭제했습니다.", deleted)
 
 
+async def _purge_old_error_logs(session) -> None:
+    """보관 기간이 지난 에러 로그를 지운다.
+
+    기준이 updated_at(마지막 발생)인 것이 핵심이다. created_at으로 지우면 오래전에
+    처음 났지만 지금도 나고 있는 에러가 사라진다 — 가장 오래 방치된, 그래서 가장 봐야 할
+    항목이 먼저 지워지는 셈이다.
+
+    건수를 로그로 남기는 것은 _purge_old_audit_logs와 같은 이유다. 이 테이블은 지문
+    단위라 행 수가 적어, 지워진 건수에 "얼마나 다양한 에러가 있었나"는 운영 신호가 있다.
+    """
+    conn = await raw_connection(session)
+    before = now_local() - timedelta(days=ERROR_RETENTION_DAYS)
+    status = await queries.delete_old_error_logs(conn, before=before)
+    await session.commit()
+    deleted = _affected(status)
+    if deleted:
+        logger.info("보관 기간이 지난 에러 로그 %d건을 삭제했습니다.", deleted)
+
+
 async def run_once(session_factory=None) -> None:
     """정리를 한 번 수행한다.
 
@@ -146,6 +170,9 @@ async def run_once(session_factory=None) -> None:
 
     async with factory() as session:
         await _purge_old_audit_logs(session)
+
+    async with factory() as session:
+        await _purge_old_error_logs(session)
 
     async with factory() as session:
         conn = await raw_connection(session)
