@@ -30,3 +30,9 @@ UPDATE password_reset_codes
 SET consumed_at = :consumed_at,
     updated_at = :updated_at
 WHERE user_id = :user_id AND consumed_at IS NULL;
+
+-- name: delete_expired_reset_codes!
+-- 정리 잡이 쓴다. 조건은 만료 하나다 — consumed_at을 넣어도 코드 TTL이 10분이라
+-- 소비된 코드는 곧 이 조건에 걸리고, 조건이 늘면 남아 있는 행을 설명하기만 어려워진다.
+-- refresh 토큰과 달리 폐기된 행을 보존할 이유가 없다(재사용을 잡는 경보가 없다).
+DELETE FROM password_reset_codes WHERE expires_at < :now;
