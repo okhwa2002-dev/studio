@@ -104,3 +104,21 @@ def reset_runtime_settings():
     invalidate_runtime_settings()
     yield
     invalidate_runtime_settings()
+
+
+@pytest.fixture
+def mail_env(tmp_path, monkeypatch):
+    """메일을 파일로 떨구는 개발 모드로 고정하고, 그 출력 디렉토리를 준다.
+
+    LOG_DIR을 tmp_path로 돌려 테스트가 실제 log/ 디렉토리를 더럽히지 않게 하고,
+    SMTP_HOST를 비워 로컬 .env에 SMTP 설정이 있어도 진짜 메일이 나가지 않게 한다.
+    get_settings는 lru_cache라 env를 바꾼 뒤 캐시를 비워야 반영된다.
+    """
+    monkeypatch.setenv("LOG_DIR", str(tmp_path))
+    monkeypatch.setenv("SMTP_HOST", "")
+    # 발신자도 비워 둔다 — 로컬 .env에 SMTP_FROM이 있으면 폴백 테스트가 흔들린다.
+    monkeypatch.setenv("SMTP_USER", "")
+    monkeypatch.setenv("SMTP_FROM", "")
+    get_settings.cache_clear()
+    yield tmp_path / "mail"
+    get_settings.cache_clear()
