@@ -16,17 +16,15 @@ export function TableFooter({
   totalPages: number
   onChange: (page: number) => void
   total: number // 페이지가 아니라 전체 행 수
-  // 화면을 하나씩 옮기는 동안만 옵셔널이다. 전부 옮기면 필수로 바꿔, 빠뜨린 화면을
-  // 타입 검사가 잡게 한다.
-  pageSize?: number
-  onPageSizeChange?: (size: number) => void
+  // 옵셔널로 두지 않는다 — 목록 화면은 전부 셀렉터를 쓰기로 했으므로,
+  // 빠뜨린 화면은 타입 검사가 잡아야 한다.
+  pageSize: number
+  onPageSizeChange: (size: number) => void
 }) {
   return (
     <div className="mt-4 grid grid-cols-3 items-center text-sm text-fg-muted">
       <div>
-        {pageSize !== undefined && onPageSizeChange && (
-          <PageSizeSelect value={pageSize} onChange={onPageSizeChange} />
-        )}
+        <PageSizeSelect value={pageSize} onChange={onPageSizeChange} />
       </div>
       <div className="flex justify-center">
         <Pagination page={page} totalPages={totalPages} onChange={onChange} />
