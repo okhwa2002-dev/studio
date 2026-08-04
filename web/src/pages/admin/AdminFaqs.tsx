@@ -4,6 +4,7 @@ import { Modal } from '../../components/Modal'
 import { seqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
+import { useClientPagination } from '../../components/table/usePagination'
 import { adminFaqs, type AdminFaq, type FaqPayload } from '../../lib/admin'
 import { ApiError } from '../../lib/api'
 import { FAQ_CATEGORIES, FAQ_CATEGORY_LABEL, type FaqCategory } from '../../lib/faqs'
@@ -25,7 +26,6 @@ const STATUS_BADGE: Record<AdminFaq['status'], { label: string; className: strin
   },
 }
 
-const PAGE_SIZE = 10
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 const INPUT_CLASS =
@@ -184,7 +184,6 @@ export function AdminFaqs() {
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<StatusFilter>('ALL')
   const [query, setQuery] = useState('')
-  const [page, setPage] = useState(1)
   // null = 닫힘, 'new' = 새 FAQ, 그 외 = 수정 대상
   const [editing, setEditing] = useState<AdminFaq | 'new' | null>(null)
 
@@ -209,16 +208,16 @@ export function AdminFaqs() {
     return f.question.toLowerCase().includes(keyword) || f.answer.toLowerCase().includes(keyword)
   })
 
+  const { page, setPage, pageSize, setPageSize, totalPages, total, pageRows } =
+    useClientPagination(filteredRows)
+
   const columns: Column<AdminFaq>[] = [
-    seqColumn<AdminFaq>(filteredRows.length, page, PAGE_SIZE),
+    seqColumn<AdminFaq>(total, page, pageSize),
     { header: '질문', cell: (f) => f.question },
     { header: '분류', cell: (f) => FAQ_CATEGORY_LABEL[f.category], align: 'center' },
     { header: '상태', cell: (f) => <StatusBadge status={f.status} />, align: 'center' },
     { header: '작성자', cell: (f) => f.created_by_name ?? '-', align: 'center' },
   ]
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
-  const pageRows = filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const save = async (payload: FaqPayload) => {
     if (editing === 'new') await adminFaqs.create(payload)
@@ -295,7 +294,9 @@ export function AdminFaqs() {
             page={page}
             totalPages={totalPages}
             onChange={setPage}
-            total={filteredRows.length}
+            total={total}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
           />
         </>
       )}
