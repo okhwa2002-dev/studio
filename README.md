@@ -116,6 +116,7 @@ Vite dev 서버가 `/auth`, `/admin/users`, `/health` 요청을 `http://localhos
 | `npm test && npm run build && npm run lint` | **통합 전 검증** — 셋 다 통과해야 머지한다 |
 | `git switch main && git pull` | 머지 대상을 최신으로 맞춘다 |
 | `git merge --no-ff feat/기능이름` | 병합한다 (`--no-ff`로 기능 단위를 남긴다) |
+| `npm run migrate` | **병합 결과에 마이그레이션을 적용해 본다** — head가 갈렸는지 여기서 드러난다 |
 | `npm test` | **병합 결과를 다시 검증한다** — 각자 통과해도 합치면 깨질 수 있다 |
 | `git push origin main` | 원격에 올린다 |
 | `git branch -d feat/기능이름` | 병합된 브랜치를 지운다 |
@@ -135,6 +136,14 @@ feat: 만료된 비밀번호 재설정 코드 정리 잡 추가
 > `git add .`을 쓰지 않는 이유는 `.env`·`storage/`·`web/dist` 같은 것이 딸려 들어가서가 아니라(그건 `.gitignore`가 막는다), **무엇을 커밋하는지 보지 않게 되기 때문**이다. 파일을 이름으로 고르면 커밋 경계를 매번 다시 생각하게 된다.
 
 > **병합 결과 검증을 건너뛰지 말 것.** 브랜치와 `main`이 각각 통과해도 합친 결과는 깨질 수 있다 — 양쪽이 같은 함수의 시그니처를 다르게 바꾼 경우가 흔하다. 병합 후 테스트가 깨지면 푸시하지 말고 그 자리에서 고친다(아직 로컬이라 되돌리기 쉽다).
+
+> **두 브랜치가 각각 마이그레이션을 추가했다면 병합 후 head가 갈린다.** 둘 다 갈라질 때의 head를 `down_revision`으로 적어놨기 때문인데, **git은 이걸 충돌로 잡아주지 않는다** — 서로 다른 파일이라 자동 병합이 조용히 성공한다. 그대로 두면 `alembic upgrade head`가 `Multiple head revisions are present`로 실패한다.
+>
+> 그래서 병합 후 `npm run migrate`를 돌린다. head가 갈렸으면 나중 마이그레이션의 `down_revision`을 먼저 머지된 쪽 리비전으로 바꿔 사슬을 편다. 서로 무관한 테이블 추가라면 순서에 의미가 없으니 어느 쪽을 앞에 둬도 된다. 현재 head는 이렇게 확인한다:
+>
+> ```
+> uv run alembic heads          # 두 줄 이상 나오면 갈린 것이다
+> ```
 
 > **푸시가 거절되면 force-push하지 말 것.** 거절은 원격이 움직였다는 뜻이다. `git pull`로 받아 합치고 다시 검증한다.
 
