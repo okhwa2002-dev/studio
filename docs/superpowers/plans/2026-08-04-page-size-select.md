@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **선택지는 `[20, 50, 100]`, 기본값은 20(감사 로그만 50)** — 목록은 `PageSizeSelect.tsx` 한 파일에만 둔다. 감사 로그는 90일치 × 전체 사용자 쓰기라 20건씩은 훑어보기가 되지 않아, 최종 브랜치 리뷰에서 그 화면만 기본값을 50으로 되돌렸다(Task 9 참조).
+- **선택지는 `[20, 50, 100]`, 기본값은 20** — 7개 화면 공통. 목록과 기본값은 `PageSizeSelect.tsx` 한 파일에만 둔다.
 - **상태 수명은 화면 안까지** — `useState`만 쓴다. localStorage · URL에 저장하지 않는다.
 - **기존 `setPage(1)` 호출은 전부 유지한다** — 필터 변경 시 1페이지 복귀는 훅의 범위 보정과 다른 규칙이다.
 - **주석은 한국어**, "무엇"이 아니라 "왜"를 적는다(이 저장소의 기존 주석 방식).
@@ -658,24 +658,21 @@ feat: 공지 목록에 페이지당 건수 선택 적용
 
 - [ ] **Step 1: 상수를 state로 바꾼다**
 
+import에 기본값을 더한다:
+
+```tsx
+import { DEFAULT_PAGE_SIZE } from '../../components/table/PageSizeSelect'
+```
+
 `const PAGE_SIZE = 50` 줄(10행)을 지우고, `keyword` state 아래(46행 다음)에 넣는다:
 
 ```tsx
   // 서버 페이징이라 useClientPagination을 쓰지 않는다 — 자를 배열이 손에 없다.
-  // 크기만 화면이 들고, 자르는 일은 서버가 한다.
+  // 크기만 화면이 들고, 자르는 일은 서버가 한다. 기본값은 나머지 여섯 화면과 같은 상수를
+  // 본다 — 페이징 방식이 달라도 사용자가 보는 기본 건수까지 달라질 이유는 없다.
   // 리터럴 20으로 좁혀지면 50·100을 넣을 수 없어 number로 못박는다.
-  //
-  // 이 화면만 50에서 시작한다. 다른 목록은 수십~수백 건이지만 감사 로그는 90일치 × 전체
-  // 사용자 쓰기라, 20건씩은 훑어보기가 되지 않는다. 선택지는 나머지와 같은 20·50·100이다.
-  const [pageSize, setPageSize] = useState<number>(50)
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
 ```
-
-> **최종 상태:** Task 7을 처음 실행한 시점(커밋 `bb79376`)에는 §1의 "전 화면 20 통일"
-> 결정에 따라 `import { DEFAULT_PAGE_SIZE } from '../../components/table/PageSizeSelect'`를
-> 더하고 `useState<number>(DEFAULT_PAGE_SIZE)`로 시작했다. 그 결정이 §1 문제 정의("50건도
-> 부족하다")와 모순됨을 최종 브랜치 리뷰에서 지적받아, fix wave 커밋에서 감사 로그만
-> 리터럴 50으로 바꾸고 이제 쓰지 않게 된 `DEFAULT_PAGE_SIZE` import는 지웠다. 위 코드는
-> 그 최종 상태를 기준으로 적었다.
 
 - [ ] **Step 2: 조회·표시에서 상수를 state로 바꾼다**
 
@@ -823,49 +820,40 @@ refactor: 표 아랫줄 건수 선택 props를 필수로 바꿈
 - Consumes: 없음
 - Produces: 없음 (프론트는 언제나 `size`를 명시하므로 실동작은 그대로다)
 
-> **최종 상태:** 이 태스크는 최초 실행 시(커밋 `b7606c9`, "감사 로그 조회 기본 건수를
-> 화면 기본값(20)과 맞춤") §1의 "전 화면 20 통일" 결정에 따라 `size` 기본값을
-> `50 → 20`으로 낮췄다. 그런데 그 결정이 §1이 스스로 지적한 "감사 로그는 50건도
-> 부족하다"와 모순됨이 최종 브랜치 리뷰(Minor 5)에서 지적됐고, 감사 로그 화면 기본값이
-> 50으로 되돌아가면서(fix wave 커밋) API 기본값도 다시 50으로 맞췄다. 아래 단계는 그
-> 최종 상태(기본값 50)를 기준으로 적는다 — 실제로 거쳐 간 50 → 20 → 50 이력은 git log에
-> 남아 있다.
-
 - [ ] **Step 1: 실패하는 테스트를 쓴다**
 
 `tests/test_api_audit_logs.py` 끝에 붙인다:
 
 ```python
 async def test_default_size_matches_screen_default(client, db_session):
-    """size를 생략하면 화면 기본값 50과 같은 값으로 답한다.
+    """size를 생략하면 목록 화면 공통 기본값(20)과 같은 값으로 답한다.
 
-    감사 로그 화면은 90일치 × 전체 사용자 쓰기라 20건씩은 훑어보기가 되지 않아
-    50에서 시작한다(다른 여섯 화면은 20). 프론트는 언제나 size를 보내므로 실동작은
-    이 값에 걸리지 않는다. 그래도 맞춰 두는 것은 /docs에 뜨는 기본값이 화면과
-    어긋나면 API만 보고 판단하는 사람이 틀리기 때문이다.
+    프론트는 언제나 size를 보내므로 실동작은 이 값에 걸리지 않는다. 그래도 맞춰 두는
+    것은 /docs에 뜨는 기본값이 화면과 어긋나면 API만 보고 판단하는 사람이 틀리기
+    때문이다.
     """
     await _login(client, db_session, "logs-default-size@example.com")
     await _seed(db_session)
 
     data = await _list(client)
 
-    assert data["size"] == 50
+    assert data["size"] == 20
 ```
 
 - [ ] **Step 2: 실패를 확인한다**
 
 Run (저장소 루트에서): `uv run pytest tests/test_api_audit_logs.py::test_default_size_matches_screen_default -v`
-Expected: FAIL — 그 시점의 `size` 기본값과 다른 값이라 실패한다.
+Expected: FAIL — `assert 50 == 20`
 
-- [ ] **Step 3: 기본값을 화면 기본값(50)과 맞춘다**
+- [ ] **Step 3: 기본값을 화면 기본값(20)과 맞춘다**
 
 `app/api/admin_audit_logs.py` 30행:
 
 ```python
-    # 화면 기본값(50)과 맞춘다 — 감사 로그는 90일치 × 전체 사용자 쓰기라 20건씩은
-    # 훑어보기가 되지 않아 이 화면만 50에서 시작하기로 했다. /docs에 뜨는 값이 화면과
-    # 어긋나지 않게 여기도 같이 맞춘다.
-    size: int = Query(50, ge=1, le=_MAX_SIZE),
+    # 목록 화면 공통 기본값(20)과 맞춘다. 프론트는 언제나 size를 명시하므로 실동작은
+    # 이 값에 걸리지 않지만, /docs에 뜨는 기본값이 화면과 어긋나면 API만 보고 판단하는
+    # 사람이 틀린다.
+    size: int = Query(20, ge=1, le=_MAX_SIZE),
 ```
 
 `_MAX_SIZE = 200`은 그대로 둔다 — 최대 선택지 100에 여유가 있고, `test_size_over_limit_is_422`가 상한을 지킨다.
@@ -877,16 +865,10 @@ Expected: 파일 내 전체 PASS (새 테스트 포함, 기존 페이징·상한
 
 - [ ] **Step 5: 커밋**
 
-최초 실행 시 커밋 메시지(20으로 낮추던 시점):
+커밋 메시지:
 
 ```
 feat: 감사 로그 조회 기본 건수를 화면 기본값(20)과 맞춤
-```
-
-fix wave에서 50으로 되돌린 커밋 메시지:
-
-```
-fix: 감사 로그 화면만 기본 50건으로 시작하고 훅 파일명을 export명과 맞춤
 ```
 
 ---

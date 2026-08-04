@@ -30,7 +30,7 @@
 |------|------|------|
 | 적용 범위 | 7개 화면 전부 | 공통 컴포넌트에 한 번 넣으면 되고, 화면마다 UX가 갈리지 않는다 |
 | 선택지 | 20 · 50 · 100 | 10은 뺀다. 세 단계면 "조금 / 보통 / 많이"가 충분히 갈린다 |
-| 기본값 | 20 (감사 로그만 50) | 화면마다 10 / 50으로 갈려 있던 것을 20으로 통일했으나, 감사 로그는 이 문서의 "문제" 절이 스스로 지적한 "50건도 부족하다"와 모순됐다 — 최종 브랜치 리뷰에서 지적돼 그 화면만 50으로 되돌렸다(§2.5) |
+| 기본값 | 20 (전 화면 통일) | 화면마다 10 / 50으로 갈려 있던 것을 하나로 맞춘다. 감사 로그만 50으로 두는 안을 한 번 넣었다가 되돌렸다 — 화면마다 기본값이 다르면 "이 화면은 왜 다르지"를 설명할 곳이 코드 주석밖에 없고, 많이 보고 싶은 사람은 셀렉터를 올리면 된다. 그 화면이 특별히 많은 건수를 원한다는 관찰은 유효하지만, 답은 기본값 예외가 아니라 선택지(100)다 |
 | 상태 유지 | 화면 안에서만 (`useState`) | 화면을 떠나거나 새로고침하면 20으로 돌아간다. 기존 `page` 상태와 같은 수명이라 규칙이 하나뿐이다 |
 | UI 위치 | `TableFooter` 왼쪽 칸 | 이미 비어 있는 칸이라 3열 그리드를 건드리지 않고, 페이지 버튼의 정중앙 정렬이 유지된다 |
 
@@ -55,7 +55,7 @@ PageSizeSelect({ value: number, onChange: (n: number) => void })
 
 `Pagination.tsx`와 같은 방침이다 — 도메인을 모르고 숫자만 안다. 바깥 여백·정렬은 두지 않고 배치는 쓰는 쪽(`TableFooter`)이 정한다.
 
-선택지 `[20, 50, 100]`은 이 파일의 상수(`PAGE_SIZE_OPTIONS`)로 두고 export한다. 기본값 20은 훅(`useClientPagination`)과 여섯 화면이 참조하므로, 목록과 기본값이 한 파일에만 있게 한다. 감사 로그 화면만 예외로 자신만의 기본값(50)을 리터럴로 든다(§2.5) — 참조하지 않으므로 이 상수와 어긋나 보일 이유가 없다.
+선택지 `[20, 50, 100]`은 이 파일의 상수(`PAGE_SIZE_OPTIONS`)로 두고 export한다. 기본값 `DEFAULT_PAGE_SIZE`(20)는 훅(`useClientPagination`)과 감사 로그 화면이 모두 참조하므로, 목록과 기본값이 한 파일에만 있다 — 바꾸려면 이 파일 한 곳만 고치면 7개 화면이 함께 움직인다.
 
 라벨은 `20건씩`. 표시 요소(`<select>`)의 테두리·글자 크기는 옆의 `Pagination` 버튼과 같은 클래스를 쓴다.
 
@@ -111,7 +111,7 @@ const pageRows = filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
 [`AdminAuditLogs.tsx`](../../../web/src/pages/admin/AdminAuditLogs.tsx)는 필터·페이지를 URL에 두고 서버가 잘라 준 결과를 그대로 그린다. `useClientPagination`은 배열을 자르는 훅이라 맞지 않는다.
 
-- `const PAGE_SIZE = 50` → `const [pageSize, setPageSize] = useState<number>(50)`. 여섯 화면과 달리 `DEFAULT_PAGE_SIZE`(20)를 참조하지 않고 리터럴 50을 그대로 쓴다 — 감사 로그만 기본값이 다르다는 결정(§1) 때문이다.
+- `const PAGE_SIZE = 50` → `const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)`. 페이징 방식은 달라도 기본값은 여섯 화면과 같은 상수를 본다.
 - `pageSize`가 `load`의 `useCallback` 의존성에 들어간다 — 바뀌면 다시 조회한다.
 - 크기를 바꿀 때 `setFilter({})`를 함께 호출한다. 기존 `setFilter`는 `page`가 patch에 없으면 URL에서 `page`를 지우므로, 1페이지 복귀 규칙이 필터 변경과 똑같이 처리된다.
 
@@ -119,7 +119,7 @@ const pageRows = filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
 ### 2.6 백엔드 — 기본값만 맞춘다
 
-[`app/api/admin_audit_logs.py`](../../../app/api/admin_audit_logs.py)의 `size` 기본값은 화면 기본값(50)과 맞춘다. 애초 §1의 "전 화면 20 통일" 결정에 맞춰 `50 → 20`으로 낮췄으나, 그 결정 자체가 §1이 스스로 지적한 "50건도 부족하다"와 모순됐다는 것이 최종 브랜치 리뷰에서 지적됐다. 감사 로그 화면 기본값을 50으로 되돌리면서 API 기본값도 다시 50으로 맞춘다. 프론트는 언제나 `size`를 명시하므로 실동작은 달라지지 않고, API 문서에 뜨는 기본값이 화면과 어긋나지 않게 하는 목적이다.
+[`app/api/admin_audit_logs.py`](../../../app/api/admin_audit_logs.py)의 `size` 기본값을 `50 → 20`으로 바꿔 화면 기본값과 맞춘다. 프론트가 항상 `size`를 명시하므로 실동작에는 영향이 없고, API 문서상 기본값을 화면과 맞추는 목적이다.
 
 `_MAX_SIZE = 200`은 그대로 둔다. 최대 선택지 100에 여유가 있고, `test_size_over_limit_is_422`가 201로 상한을 검사한다.
 
