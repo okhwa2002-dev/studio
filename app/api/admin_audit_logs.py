@@ -27,7 +27,10 @@ async def list_audit_logs(
     success: YN | None = None,
     q: str | None = None,
     page: int = Query(1, ge=1),
-    size: int = Query(50, ge=1, le=_MAX_SIZE),
+    # 목록 화면 공통 기본값(20)과 맞춘다. 프론트는 언제나 size를 명시하므로 실동작은
+    # 이 값에 걸리지 않지만, /docs에 뜨는 기본값이 화면과 어긋나면 API만 보고 판단하는
+    # 사람이 틀린다.
+    size: int = Query(20, ge=1, le=_MAX_SIZE),
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):

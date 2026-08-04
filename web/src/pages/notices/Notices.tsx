@@ -5,11 +5,11 @@ import { PinnedBadge } from '../../components/PinnedBadge'
 import { badgedSeqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
+import { useClientPagination } from '../../components/table/useClientPagination'
 import { ApiError } from '../../lib/api'
 import { isY, notices, type Notice } from '../../lib/notices'
 import { useUnreadNotices } from '../../lib/unreadNotices'
 
-const PAGE_SIZE = 10
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 // 백엔드가 로컬 naive ISO 문자열을 준다. Date로 파싱하면 타임존 보정이
@@ -43,7 +43,6 @@ export function Notices() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Notice | null>(null)
   const { refresh } = useUnreadNotices()
 
@@ -80,6 +79,9 @@ export function Notices() {
       n.body.toLowerCase().includes(keyword),
   )
 
+  const { page, setPage, pageSize, setPageSize, totalPages, total, pageRows } =
+    useClientPagination(filteredRows)
+
   const columns: Column<Notice>[] = [
     // 고정 공지는 최신순 일련번호 바깥에 있다. 번호를 붙이면 목록의 번호가
     // 뒤죽박죽이 되므로 '공지' 배지를 놓고, 나머지에만 이어지는 번호를 준다.
@@ -95,9 +97,6 @@ export function Notices() {
     },
     { header: '게시일', cell: (notice) => formatDate(notice.starts_at), align: 'center' },
   ]
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
-  const pageRows = filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <div>
@@ -135,7 +134,9 @@ export function Notices() {
             page={page}
             totalPages={totalPages}
             onChange={setPage}
-            total={filteredRows.length}
+            total={total}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
           />
         </>
       )}

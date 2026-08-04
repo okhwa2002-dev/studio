@@ -4,11 +4,11 @@ import { FormError } from '../../components/FormError'
 import { seqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
+import { useClientPagination } from '../../components/table/useClientPagination'
 import { ApiError } from '../../lib/api'
 import { projects, STAGE_LABEL, type ProjectSummary } from '../../lib/projects'
 import { NewProjectModal } from './NewProjectModal'
 
-const PAGE_SIZE = 10
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 const PROJECT_STATUS_LABEL: Record<ProjectSummary['status'], string> = {
@@ -24,9 +24,10 @@ function formatDate(iso: string) {
 export function Projects() {
   const navigate = useNavigate()
   const [rows, setRows] = useState<ProjectSummary[]>([])
+  const { page, setPage, pageSize, setPageSize, totalPages, total, pageRows } =
+    useClientPagination(rows)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
   const [showNew, setShowNew] = useState(false)
 
   const load = useCallback(() => {
@@ -40,7 +41,7 @@ export function Projects() {
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
       .finally(() => setLoading(false))
-  }, [])
+  }, [setPage])
 
   useEffect(() => {
     load()
@@ -48,7 +49,7 @@ export function Projects() {
 
   const columns: Column<ProjectSummary>[] = [
     // 제목·주제는 길이가 제각각이라 좌측정렬을 유지하고, 나머지 짧은 값들만 중앙정렬한다.
-    seqColumn<ProjectSummary>(rows.length, page, PAGE_SIZE),
+    seqColumn<ProjectSummary>(total, page, pageSize),
     { header: '제목', cell: (p) => <span className="font-medium text-fg">{p.title}</span> },
     { header: '주제', cell: (p) => p.topic },
     { header: '상태', cell: (p) => PROJECT_STATUS_LABEL[p.status], align: 'center' },
@@ -60,9 +61,6 @@ export function Projects() {
     },
     { header: '생성일', cell: (p) => formatDate(p.created_at), align: 'center' },
   ]
-
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
-  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <div>
@@ -97,7 +95,9 @@ export function Projects() {
             page={page}
             totalPages={totalPages}
             onChange={setPage}
-            total={rows.length}
+            total={total}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
           />
         </>
       )}

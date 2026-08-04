@@ -6,6 +6,7 @@ import { Modal } from '../../components/Modal'
 import { seqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
+import { useClientPagination } from '../../components/table/useClientPagination'
 import { adminUsers, type AdminUser } from '../../lib/admin'
 import { ApiError } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
@@ -35,7 +36,6 @@ function readStatus(params: URLSearchParams): StatusFilter {
   return s && STATUS_VALUES.has(s) ? (s as StatusFilter) : 'ALL'
 }
 
-const PAGE_SIZE = 10
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 function roleLabel(role: AdminUser['role']) {
@@ -275,7 +275,6 @@ export function AdminUsers() {
   const [rows, setRows] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
   const [actingId, setActingId] = useState<number | null>(null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<AdminUser | null>(null)
@@ -290,10 +289,26 @@ export function AdminUsers() {
   // 없고, 대시보드에서 같은 카드를 다시 눌러도(주소가 그대로여도) 탭이 딴 데 가 있지 않다.
   const status = readStatus(searchParams)
 
+  const keyword = query.trim().toLowerCase()
+  const filteredRows = rows
+    .filter((u) => {
+      if (status === 'LOCKED' && !u.locked_at) return false
+      if (!keyword) return true
+      return u.name.toLowerCase().includes(keyword) || u.email.toLowerCase().includes(keyword)
+    })
+    // 승인 대기가 관리자의 할 일이다 — 상태를 섞어 보는 탭('전체'·'잠김')에서 맨 위로 올린다.
+    // 정렬은 여기서 한다: 페이지 자르기(pageRows)보다 앞서야 1페이지에 모이고,
+    // filter가 만든 새 배열이라 rows 원본은 건드리지 않는다.
+    // sort는 안정 정렬이므로 같은 그룹 안에서는 서버 정렬(가입일 오름차순)이 그대로 남는다.
+    .sort((a, b) => Number(b.status === 'PENDING') - Number(a.status === 'PENDING'))
+
+  const { page, setPage, pageSize, setPageSize, totalPages, total, pageRows } =
+    useClientPagination(filteredRows)
+
   // 탭을 바꾸면 목록이 통째로 바뀐다 — 이전 탭에서 보던 페이지 번호는 의미가 없다.
   useEffect(() => {
     setPage(1)
-  }, [status])
+  }, [status, setPage])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -306,7 +321,7 @@ export function AdminUsers() {
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
       .finally(() => setLoading(false))
-  }, [status])
+  }, [status, setPage])
 
   useEffect(() => {
     load()
@@ -350,21 +365,8 @@ export function AdminUsers() {
     return temp_password
   }
 
-  const keyword = query.trim().toLowerCase()
-  const filteredRows = rows
-    .filter((u) => {
-      if (status === 'LOCKED' && !u.locked_at) return false
-      if (!keyword) return true
-      return u.name.toLowerCase().includes(keyword) || u.email.toLowerCase().includes(keyword)
-    })
-    // 승인 대기가 관리자의 할 일이다 — 상태를 섞어 보는 탭('전체'·'잠김')에서 맨 위로 올린다.
-    // 정렬은 여기서 한다: 페이지 자르기(pageRows)보다 앞서야 1페이지에 모이고,
-    // filter가 만든 새 배열이라 rows 원본은 건드리지 않는다.
-    // sort는 안정 정렬이므로 같은 그룹 안에서는 서버 정렬(가입일 오름차순)이 그대로 남는다.
-    .sort((a, b) => Number(b.status === 'PENDING') - Number(a.status === 'PENDING'))
-
   const columns: Column<AdminUser>[] = [
-    seqColumn<AdminUser>(filteredRows.length, page, PAGE_SIZE),
+    seqColumn<AdminUser>(total, page, pageSize),
     { header: '이름', cell: (u) => u.name, align: 'center' },
     { header: '이메일', cell: (u) => u.email },
     { header: '역할', cell: (u) => roleLabel(u.role), align: 'center' },
@@ -417,9 +419,6 @@ export function AdminUsers() {
   ]
 
   const columnsWithAction = columns
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
-  const pageRows = filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <div>
@@ -481,7 +480,9 @@ export function AdminUsers() {
             page={page}
             totalPages={totalPages}
             onChange={setPage}
-            total={filteredRows.length}
+            total={total}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
           />
         </>
       )}

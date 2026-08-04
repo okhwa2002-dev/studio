@@ -4,6 +4,7 @@ import { FormError } from '../../components/FormError'
 import { seqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
+import { useClientPagination } from '../../components/table/useClientPagination'
 import { adminProjects, type AdminProject } from '../../lib/admin'
 import { ApiError } from '../../lib/api'
 import { STAGE_LABEL, type ProjectStatus } from '../../lib/projects'
@@ -27,7 +28,6 @@ const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
 // URL ?status= 로 넘어온 값이 유효한 탭인지 검사한다(대시보드 딥링크 대비).
 const STATUS_VALUES = new Set<string>(STATUS_TABS.map((t) => t.status))
 
-const PAGE_SIZE = 10
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 function formatDate(iso: string) {
@@ -40,33 +40,8 @@ export function AdminProjects() {
   const [rows, setRows] = useState<AdminProject[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
   const [searchParams] = useSearchParams()
-
-  // 대시보드 딥링크의 필터를 반영한다: ?status=DRAFT·REVIEW·DONE 등 → 해당 탭.
-  useEffect(() => {
-    const s = searchParams.get('status')
-    if (s && STATUS_VALUES.has(s)) setStatus(s as StatusFilter)
-    setPage(1)
-  }, [searchParams])
-
-  const load = useCallback(() => {
-    setLoading(true)
-    setError(null)
-    adminProjects
-      .list()
-      .then((data) => {
-        setRows(data)
-        setPage(1)
-      })
-      .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
-      .finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
 
   const keyword = query.trim().toLowerCase()
   const filteredRows = rows.filter((p) => {
@@ -80,9 +55,36 @@ export function AdminProjects() {
     )
   })
 
+  const { page, setPage, pageSize, setPageSize, totalPages, total, pageRows } =
+    useClientPagination(filteredRows)
+
+  // 대시보드 딥링크의 필터를 반영한다: ?status=DRAFT·REVIEW·DONE 등 → 해당 탭.
+  useEffect(() => {
+    const s = searchParams.get('status')
+    if (s && STATUS_VALUES.has(s)) setStatus(s as StatusFilter)
+    setPage(1)
+  }, [searchParams, setPage])
+
+  const load = useCallback(() => {
+    setLoading(true)
+    setError(null)
+    adminProjects
+      .list()
+      .then((data) => {
+        setRows(data)
+        setPage(1)
+      })
+      .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
+      .finally(() => setLoading(false))
+  }, [setPage])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
   const columns: Column<AdminProject>[] = [
     // 제목·주제·소유자는 길이가 제각각이라 좌측정렬, 나머지 짧은 값만 중앙정렬한다.
-    seqColumn<AdminProject>(filteredRows.length, page, PAGE_SIZE),
+    seqColumn<AdminProject>(total, page, pageSize),
     { header: '제목', cell: (p) => <span className="font-medium text-fg">{p.title}</span> },
     { header: '주제', cell: (p) => p.topic },
     {
@@ -102,9 +104,6 @@ export function AdminProjects() {
     },
     { header: '생성일', cell: (p) => formatDate(p.created_at), align: 'center' },
   ]
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
-  const pageRows = filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <div>
@@ -160,7 +159,9 @@ export function AdminProjects() {
             page={page}
             totalPages={totalPages}
             onChange={setPage}
-            total={filteredRows.length}
+            total={total}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
           />
         </>
       )}

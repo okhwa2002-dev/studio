@@ -5,6 +5,7 @@ import { PinnedBadge } from '../../components/PinnedBadge'
 import { badgedSeqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
+import { useClientPagination } from '../../components/table/useClientPagination'
 import {
   adminNotices,
   localNowIso,
@@ -39,7 +40,6 @@ const PHASE_BADGE: Record<NoticePhase, { label: string; className: string }> = {
   ENDED: { label: '종료', className: 'bg-surface-muted text-fg-muted' },
 }
 
-const PAGE_SIZE = 10
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 // 백엔드가 로컬 naive ISO 문자열을 주고 datetime-local 입력은 'YYYY-MM-DDTHH:mm'을
@@ -224,7 +224,6 @@ export function AdminNotices() {
   const [error, setError] = useState<string | null>(null)
   const [phase, setPhase] = useState<PhaseFilter>('ALL')
   const [query, setQuery] = useState('')
-  const [page, setPage] = useState(1)
   // null = 닫힘, 'new' = 새 공지, 그 외 = 수정 대상
   const [editing, setEditing] = useState<AdminNotice | 'new' | null>(null)
 
@@ -250,6 +249,9 @@ export function AdminNotices() {
     return n.title.toLowerCase().includes(keyword) || n.body.toLowerCase().includes(keyword)
   })
 
+  const { page, setPage, pageSize, setPageSize, totalPages, total, pageRows } =
+    useClientPagination(filteredRows)
+
   const columns: Column<AdminNotice>[] = [
     // 고정 공지는 순번 바깥이다 — 번호 대신 '공지' 배지를 놓는다(사용자 목록과 같은 규칙).
     badgedSeqColumn<AdminNotice>(filteredRows, (n) => isY(n.pinned_yn), <PinnedBadge />),
@@ -264,9 +266,6 @@ export function AdminNotices() {
     { header: '게시기간', cell: formatPeriod, align: 'center' },
     { header: '작성자', cell: (n) => n.created_by_name ?? '-', align: 'center' },
   ]
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
-  const pageRows = filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const save = async (payload: NoticePayload) => {
     if (editing === 'new') await adminNotices.create(payload)
@@ -343,7 +342,9 @@ export function AdminNotices() {
             page={page}
             totalPages={totalPages}
             onChange={setPage}
-            total={filteredRows.length}
+            total={total}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
           />
         </>
       )}
