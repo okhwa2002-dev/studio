@@ -30,6 +30,9 @@ export type PopupNotice = {
 
 export const notices = {
   list: () => api.get<Notice[]>('/notices'),
+  // 상세 화면 전용. 목록에서 찾아 쓰지 않는 이유는 새로고침·링크 공유로 상세에
+  // 바로 들어올 수 있어야 하기 때문이다. 노출 조건을 벗어나면 404가 온다.
+  detail: (id: number) => api.get<Notice>(`/notices/${id}`),
   popups: () => api.get<PopupNotice[]>('/notices/popups'),
   unreadCount: () => api.get<{ count: number }>('/notices/unread/count'),
   markRead: (id: number) => api.post<{ id: number }>(`/notices/${id}/read`),

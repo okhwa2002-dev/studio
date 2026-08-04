@@ -12,6 +12,7 @@ import { ChangePasswordRequired } from './pages/ChangePasswordRequired'
 import { Dashboard } from './pages/Dashboard'
 import { Faqs } from './pages/faqs/Faqs'
 import { Login } from './pages/Login'
+import { NoticeDetail } from './pages/notices/NoticeDetail'
 import { Notices } from './pages/notices/Notices'
 import { PendingApproval } from './pages/PendingApproval'
 import { ProjectDetail } from './pages/projects/ProjectDetail'
@@ -52,6 +53,7 @@ function Routing() {
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/notices" element={<Notices />} />
+          <Route path="/notices/:id" element={<NoticeDetail />} />
           <Route path="/faqs" element={<Faqs />} />
           <Route path="/settings" element={<Settings />} />
           <Route element={<RequireAdmin />}>
