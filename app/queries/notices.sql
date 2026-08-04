@@ -73,12 +73,16 @@ WHERE ntc.deleted_at IS NULL AND ntc.status = 'PUBLISHED'
   AND ntc.starts_at <= :now AND (ntc.ends_at IS NULL OR ntc.ends_at > :now)
   AND r.id IS NULL;
 
--- name: find_visible_notice_by_id^
--- 읽음 처리 전 노출 조건 확인. 조건을 벗어난 공지(임시저장·예약·종료·삭제)는 없는 것으로 본다.
-SELECT id
-FROM notices
-WHERE id = :id AND deleted_at IS NULL AND status = 'PUBLISHED'
-  AND starts_at <= :now AND (ends_at IS NULL OR ends_at > :now);
+-- name: find_published_notice_by_id^
+-- 상세 화면이 한 건을 읽을 때와, 읽음 처리 전 노출 조건을 확인할 때 함께 쓴다.
+-- 조건을 벗어난 공지(임시저장·예약·종료·삭제)는 없는 것으로 본다 — 목록에 안 보이는
+-- 공지가 URL로는 열리면 안 된다.
+SELECT n.id, n.title, n.body, n.pinned_yn, n.starts_at,
+       (r.id IS NOT NULL) AS is_read
+FROM notices n
+LEFT JOIN notice_reads r ON r.notice_id = n.id AND r.user_id = :user_id
+WHERE n.id = :id AND n.deleted_at IS NULL AND n.status = 'PUBLISHED'
+  AND n.starts_at <= :now AND (n.ends_at IS NULL OR n.ends_at > :now);
 
 -- name: mark_notice_read!
 -- 이미 읽은 공지면 아무것도 하지 않는다(UNIQUE(notice_id, user_id)).

@@ -95,6 +95,69 @@ async def test_list_marks_unread_by_default(client, db_session):
     assert resp.json()[0]["is_read"] is False
 
 
+async def test_detail_requires_login(client, db_session):
+    notice = await _add_notice(db_session)
+    resp = await client.get(f"/api/notices/{notice.id}")
+    assert resp.status_code == 401
+
+
+async def test_detail_returns_body(client, db_session):
+    await _login_member(client, db_session, "member-detail@example.com")
+    notice = await _add_notice(db_session, title="상세", body="첫 줄\n둘째 줄")
+
+    resp = await client.get(f"/api/notices/{notice.id}")
+    assert resp.status_code == 200
+    assert resp.json()["id"] == notice.id
+    assert resp.json()["title"] == "상세"
+    assert resp.json()["body"] == "첫 줄\n둘째 줄"
+    assert resp.json()["is_read"] is False
+
+
+async def test_detail_reflects_my_read_state(client, db_session):
+    await _login_member(client, db_session, "member-detail-read@example.com")
+    notice = await _add_notice(db_session)
+    await client.post(f"/api/notices/{notice.id}/read")
+
+    assert (await client.get(f"/api/notices/{notice.id}")).json()["is_read"] is True
+
+
+async def test_detail_hides_notices_missing_from_list(client, db_session):
+    """목록에 안 보이는 공지는 URL로도 열리지 않는다."""
+    await _login_member(client, db_session, "member-detail-hidden@example.com")
+    now = now_local()
+
+    draft = await _add_notice(db_session, status=NoticeStatus.DRAFT, starts_at=None)
+    scheduled = await _add_notice(db_session, starts_at=now + timedelta(days=1))
+    ended = await _add_notice(
+        db_session, starts_at=now - timedelta(days=3), ends_at=now - timedelta(days=1)
+    )
+    deleted = await _add_notice(db_session, deleted_at=now)
+
+    for notice in (draft, scheduled, ended, deleted):
+        assert (await client.get(f"/api/notices/{notice.id}")).status_code == 404
+
+
+async def test_detail_on_unknown_id_returns_404(client, db_session):
+    await _login_member(client, db_session, "member-detail-missing@example.com")
+    assert (await client.get("/api/notices/999999")).status_code == 404
+
+
+async def test_detail_does_not_mark_read(client, db_session):
+    """읽음 처리는 프론트가 POST로 따로 요청한다 — 조회만으로 배지가 사라지면
+    관리자가 미리보기로 열어봤을 때도 읽은 것이 된다."""
+    user = await _login_member(client, db_session, "member-detail-noread@example.com")
+    notice = await _add_notice(db_session)
+
+    await client.get(f"/api/notices/{notice.id}")
+
+    result = await db_session.execute(
+        select(func.count())
+        .select_from(NoticeRead)
+        .where(NoticeRead.notice_id == notice.id, NoticeRead.user_id == user.id)
+    )
+    assert result.scalar_one() == 0
+
+
 async def test_mark_read_flips_is_read(client, db_session):
     await _login_member(client, db_session, "member-read@example.com")
     notice = await _add_notice(db_session)
@@ -204,10 +267,10 @@ async def test_popups_exclude_expired(client, db_session):
 
 
 async def test_draft_with_past_start_is_hidden_everywhere(client, db_session):
-    """이 테스트가 없으면 네 쿼리의 `status = 'PUBLISHED'` 조건은 어떤 테스트에도
+    """이 테스트가 없으면 각 쿼리의 `status = 'PUBLISHED'` 조건은 어떤 테스트에도
     걸리지 않는다 — _resolve_period가 임시저장의 starts_at을 항상 비우기 때문에
     'DRAFT면서 starts_at이 과거'인 조합은 API로는 만들어지지 않는다. ORM으로 직접
-    그 조합을 만들어 네 조회 경로 모두에서 실제로 막히는지 확인한다."""
+    그 조합을 만들어 사용자에게 열린 조회 경로 모두에서 막히는지 확인한다."""
     await _login_member(client, db_session, "member-draft-past@example.com")
     now = now_local()
 
@@ -227,6 +290,9 @@ async def test_draft_with_past_start_is_hidden_everywhere(client, db_session):
 
     popups = await client.get("/api/notices/popups")
     assert popups.json() == []
+
+    detail = await client.get(f"/api/notices/{draft.id}")
+    assert detail.status_code == 404
 
     resp = await client.post(f"/api/notices/{draft.id}/read")
     assert resp.status_code == 404

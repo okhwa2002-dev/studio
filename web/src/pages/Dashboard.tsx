@@ -49,8 +49,8 @@ function AttentionBadges({ needsReview, failed }: { needsReview: boolean; failed
 
 const NOTICE_PREVIEW_LIMIT = 5
 
-// 최근 공지 요약. 여기서 상세를 열지 않고 /notices로 보낸다 — 읽음 처리와
-// 배지 갱신 경로를 공지 목록 화면 한 군데로 모으기 위해서다.
+// 최근 공지 요약. 각 줄은 해당 공지의 상세 화면으로 바로 보낸다 — 읽음 처리와
+// 배지 갱신은 상세 화면이 맡으므로, 목록을 한 번 더 거칠 이유가 없다.
 function NoticeSection() {
   const [rows, setRows] = useState<Notice[]>([])
 
@@ -77,7 +77,7 @@ function NoticeSection() {
           {rows.map((notice) => (
             <li key={notice.id}>
               <Link
-                to="/notices"
+                to={`/notices/${notice.id}`}
                 className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-surface-muted"
               >
                 <span className="flex min-w-0 items-center gap-2">

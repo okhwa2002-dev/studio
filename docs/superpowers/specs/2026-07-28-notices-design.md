@@ -122,13 +122,14 @@ class YN(StrEnum):
 | GET | `/api/notices` | 게시중 공지 목록 (각 행에 `is_read`) |
 | GET | `/api/notices/popups` | 팝업 대상 목록 (게시중 + `popup_yn = 'Y'`) |
 | GET | `/api/notices/unread/count` | `{ "count": 3 }` |
+| GET | `/api/notices/{id}` | 공지 한 건 (상세 화면용, `is_read` 포함) |
 | POST | `/api/notices/{id}/read` | 읽음 기록 |
 
 목록 정렬은 `pinned_yn DESC, starts_at DESC, id DESC`다.
 
 **응답은 DB 값을 그대로 `"Y"` / `"N"`으로 내려준다.** API 경계에서 불리언으로 바꾸면 같은 값이 DB·API·프론트에서 세 가지 표기를 갖게 되고, 어느 층에서 뒤집혔는지 추적하기 어려워진다. 프론트 타입도 `'Y' | 'N'`이고, 변환은 체크박스에 바인딩하는 지점 한 곳에서만 일어난다(4-6).
 
-**목록 응답에 `body`를 포함시켜 상세 조회 API를 두지 않는다.** 공지는 건수가 적고, `AdminUsers`가 이미 "이미 받아온 행을 그대로 상세 모달에 쓴다"는 방식이다. 상세 API가 없으므로 `/notices/{id}` 경로가 비어 `unread/count`·`popups`와의 경로 충돌도 없다.
+**목록 응답에도 `body`를 포함시킨다.** 검색이 제목뿐 아니라 본문까지 훑기 때문이다. 상세는 `GET /notices/{id}`가 따로 준다 — 상세가 별도 화면(`/notices/:id`)이라 새로고침·링크 공유로 바로 들어올 수 있어야 하고, 그때 목록 전체를 받아 골라내는 것은 낭비다. 이 경로는 `popups`·`unread/count`가 `{id}`로 잡히지 않도록 두 정적 경로보다 **뒤에** 선언한다.
 
 `POST /{id}/read`는 `ON CONFLICT DO NOTHING`이라 몇 번을 불러도 결과가 같다. 노출 조건을 만족하지 않는 공지 id면 404를 낸다.
 
@@ -167,7 +168,7 @@ aiosql 이름 붙은 쿼리로 다음을 둔다.
 | `list_published_notices` | 사용자 목록 — `notice_reads` LEFT JOIN으로 `is_read` 계산 |
 | `list_popup_notices` | 팝업 대상 (읽음 여부와 무관) |
 | `count_unread_notices^` | 배지 — 노출 조건 AND 내 읽음 행 없음 |
-| `find_visible_notice_by_id^` | 읽음 처리 전 노출 조건 확인 (없으면 404) |
+| `find_published_notice_by_id^` | 상세 조회 + 읽음 처리 전 노출 조건 확인 (없으면 404) — 두 경로가 같은 쿼리를 쓴다 |
 | `mark_notice_read!` | 읽음 기록 `INSERT ... ON CONFLICT DO NOTHING` |
 | `list_notices_for_admin` | 관리자 목록 (`users` LEFT JOIN으로 작성자 이름), 정렬 `pinned_yn DESC, COALESCE(starts_at, created_at) DESC, id DESC` |
 | `find_notice_by_id^` | 수정·삭제 전 존재 확인 (삭제된 행 제외) |
@@ -188,32 +189,38 @@ aiosql 이름 붙은 쿼리로 다음을 둔다.
 ┌──────────────────────────────────────────────┐
 │                        [제목 또는 내용 검색] │
 │ ──────────────────────────────────────────── │
-│ 번호  제목                          게시일   │
-│  -   📌 서버 점검 안내      🔴NEW   07-28   │
-│  -   📌 이용약관 개정 안내          07-25   │
-│  3   v1.2 업데이트 내용     🔴NEW   07-20   │
-│  2   추석 연휴 운영 안내            07-14   │
-│  1   서비스 오픈 안내               07-01   │
+│ No    제목                          게시일   │
+│ [공지] 서버 점검 안내       🔴NEW   07-28   │
+│ [공지] 이용약관 개정 안내           07-25   │
+│  3    v1.2 업데이트 내용    🔴NEW   07-20   │
+│  2    추석 연휴 운영 안내           07-14   │
+│  1    서비스 오픈 안내              07-01   │
 │ ──────────────────────────────────────────── │
 │                 총 5건   ‹ 1 ›               │
 └──────────────────────────────────────────────┘
-     ↓ 행 클릭
-┌─ 모달: 서버 점검 안내 ────────────────┐
-│ 2026-07-28                            │
-│ ───────────────────────────────────── │
-│ 7/30(목) 02:00~04:00 정기 점검이      │
-│ 있습니다. 해당 시간 렌더링 요청은     │
-│ 대기 상태로 남습니다.                 │
-└───────────────────────────────────────┘
+     ↓ 행 클릭 → /notices/:id
+
+공지사항                              ← 화면 이동
+┌──────────────────────────────────────────────┐
+│ 서버 점검 안내                               │
+│ 2026-07-28                                   │
+│ ──────────────────────────────────────────── │
+│ 7/30(목) 02:00~04:00 정기 점검이 있습니다.   │
+│ 해당 시간 렌더링 요청은 대기 상태로 남습니다.│
+│                                              │
+│ [← 목록으로]                                 │
+└──────────────────────────────────────────────┘
 ```
 
-기존 `Table` + `seqColumn` + `TableFooter` + `Modal`을 그대로 쓴다. 페이지 크기는 `AdminUsers`와 같이 10건이다. 본문은 `whitespace-pre-wrap`으로 줄바꿈을 살려 그린다.
+목록은 기존 `Table` + `badgedSeqColumn` + `TableFooter`를 쓴다. 검색은 `AdminUsers`와 같이 클라이언트 필터다(제목 + 본문).
 
-고정 공지는 `seqColumn` 번호 대신 `-`와 📌를 보여준다. 번호는 최신순 일련번호인데 고정 공지는 그 순서를 벗어나 있어, 번호를 붙이면 목록의 번호가 뒤죽박죽이 된다.
+고정 공지는 번호 대신 `공지` 배지를 보여준다. 번호는 최신순 일련번호인데 고정 공지는 그 순서를 벗어나 있어, 번호를 붙이면 목록의 번호가 뒤죽박죽이 된다.
 
-검색은 `AdminUsers`와 같이 클라이언트 필터다(제목 + 본문).
+**검색어와 페이지는 URL 쿼리(`?q=`, `?page=`)에 둔다.** 상세가 별도 화면이라 목록을 떠났다 돌아오는 흐름이 생겼고, 그때 보던 자리가 살아 있어야 한다. 기본값(빈 검색어·1페이지)은 적지 않고, 페이지 이동은 `replace`로 써서 히스토리에 쌓지 않는다. `useClientPagination`은 선택적 `binding`을 받아 페이지 번호만 바깥(URL)에 맡기고, 범위 보정 규칙은 그대로 훅이 관리한다.
 
-모달을 열면 `POST /api/notices/{id}/read`를 보내고, 성공하면 해당 행의 `is_read`를 켜서 NEW 배지를 지우고 컨텍스트의 `refresh()`로 상단바 배지를 줄인다.
+**상세는 모달이 아니라 화면(`/notices/:id`)이다.** 본문은 `whitespace-pre-wrap`으로 줄바꿈을 살려 그린다. 진입하면 `GET /api/notices/{id}`로 한 건을 받고, 아직 읽지 않았으면 `POST /api/notices/{id}/read`를 보낸 뒤 컨텍스트의 `refresh()`로 상단바 배지를 줄인다. 노출 조건을 벗어난 id면 404 메시지를 그린다.
+
+`[← 목록으로]`는 목록에서 넘겨준 검색어·페이지(`location.state.from`)를 달고 돌아간다. URL로 바로 들어왔으면 값이 없어 기본 목록으로 간다.
 
 ### 4-2. 상단바 배지
 
@@ -262,7 +269,7 @@ aiosql 이름 붙은 쿼리로 다음을 둔다.
 ...
 ```
 
-`MemberSection` 위에 놓는다. `GET /api/notices` 결과의 상위 5건을 자르고, 행을 누르면 `/notices`로 이동한다 — 위젯에서 바로 상세 모달을 띄우지 않는 이유는 읽음 처리와 배지 갱신 경로를 한 군데(공지 목록 화면)로 모으기 위해서다. 공지가 없으면 섹션 자체를 그리지 않는다.
+`MemberSection` 위에 놓는다. `GET /api/notices` 결과의 상위 5건을 자르고, 행을 누르면 그 공지의 상세(`/notices/:id`)로 바로 간다 — 읽음 처리와 배지 갱신은 상세 화면이 맡으므로 목록을 한 번 더 거칠 이유가 없다. 공지가 없으면 섹션 자체를 그리지 않는다.
 
 ### 4-5. 관리자 공지 관리 `/admin/notices`
 
@@ -302,15 +309,16 @@ aiosql 이름 붙은 쿼리로 다음을 둔다.
 
 | 파일 | 내용 |
 |---|---|
-| `web/src/lib/notices.ts` | `Notice` 타입(`pinned_yn`·`popup_yn`은 `'Y' \| 'N'`) + 사용자 API (`list`, `popups`, `unreadCount`, `markRead`) + `isY(v)` / `toYn(checked)` 변환 헬퍼 |
+| `web/src/lib/notices.ts` | `Notice` 타입(`pinned_yn`·`popup_yn`은 `'Y' \| 'N'`) + 사용자 API (`list`, `detail`, `popups`, `unreadCount`, `markRead`) + `isY(v)` / `toYn(checked)` 변환 헬퍼 |
 | `web/src/lib/unreadNotices.tsx` | `UnreadNoticesProvider` + `useUnreadNotices()` — `lib/auth.tsx`와 같은 컨텍스트 패턴 |
-| `web/src/pages/notices/Notices.tsx` | 사용자 목록 + 상세 모달 |
+| `web/src/pages/notices/Notices.tsx` | 사용자 목록 (검색어·페이지는 URL 쿼리) |
+| `web/src/pages/notices/NoticeDetail.tsx` | 사용자 상세 화면 + 읽음 처리 |
 | `web/src/pages/admin/AdminNotices.tsx` | 관리자 목록 + 등록/수정 모달 |
 | `web/src/components/NoticePopup.tsx` | 메인 팝업 (`Modal` 재사용) |
 | `web/src/lib/admin.ts` | `AdminNotice` 타입 + `adminNotices` + 파생 상태 `noticePhase` 추가 (`adminUsers`·`adminProjects` 옆) |
 | `web/src/lib/api.ts` | `patch`·`del` 추가 — 지금은 `get`·`post`만 있어 관리자 수정·삭제를 보낼 수단이 없다 |
 | `web/src/lib/nav.ts` | `📢 공지사항`(`/notices`), `🗞️ 공지 관리`(`/admin/notices`, adminOnly) |
-| `web/src/App.tsx` | 두 라우트 등록 (`/admin/notices`는 `RequireAdmin` 안) |
+| `web/src/App.tsx` | 세 라우트 등록 (`/notices`, `/notices/:id`, `/admin/notices` — 마지막은 `RequireAdmin` 안) |
 | `web/src/layouts/AppLayout.tsx` | Provider로 감싸고 `NoticePopup` 렌더 |
 | `web/src/components/layout/Topbar.tsx` | 📢 배지 |
 | `web/src/pages/Dashboard.tsx` | `NoticeSection` 추가 |

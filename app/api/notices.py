@@ -15,8 +15,8 @@ async def list_notices(
     user: dict = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # 목록에 body까지 실어 보낸다 — 공지는 건수가 적고, 상세 모달이 이미 받은
-    # 행을 그대로 쓰므로 별도 상세 조회 API가 필요 없다.
+    # 목록에 body까지 실어 보낸다 — 검색이 제목뿐 아니라 본문까지 훑기 때문이다
+    # (상세는 GET /notices/{id}가 따로 준다).
     conn = await raw_connection(db)
     rows = queries.list_published_notices(conn, user_id=user["id"], now=now_local())
     return [dict(row) async for row in rows]
@@ -42,6 +42,23 @@ async def count_unread_notices(
     return {"count": row["n"]}
 
 
+# 정적 경로(/popups, /unread/count)보다 뒤에 선언한다 — 먼저 두면 "popups"가
+# notice_id로 잡힌다.
+@router.get("/{notice_id}")
+async def get_notice(
+    notice_id: int,
+    user: dict = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    conn = await raw_connection(db)
+    row = await queries.find_published_notice_by_id(
+        conn, id=notice_id, user_id=user["id"], now=now_local()
+    )
+    if row is None:
+        raise Errors.not_found("공지사항을 찾을 수 없습니다.")
+    return dict(row)
+
+
 @router.post("/{notice_id}/read")
 async def mark_notice_read(
     notice_id: int,
@@ -50,7 +67,12 @@ async def mark_notice_read(
 ):
     conn = await raw_connection(db)
     now = now_local()
-    if await queries.find_visible_notice_by_id(conn, id=notice_id, now=now) is None:
+    if (
+        await queries.find_published_notice_by_id(
+            conn, id=notice_id, user_id=user["id"], now=now
+        )
+        is None
+    ):
         raise Errors.not_found("공지사항을 찾을 수 없습니다.")
 
     await queries.mark_notice_read(conn, notice_id=notice_id, user_id=user["id"], now=now)

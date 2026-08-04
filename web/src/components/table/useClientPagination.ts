@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_PAGE_SIZE } from './PageSizeSelect'
 
 // 전량을 받아 프론트가 잘라 보여주는 목록(감사 로그를 뺀 여섯 화면)의 공통 계산.
@@ -7,8 +7,21 @@ import { DEFAULT_PAGE_SIZE } from './PageSizeSelect'
 //
 // seqColumn이 total과 pageSize를 함께 받으므로 total도 돌려준다 — 화면이 rows.length를
 // 두 번 세지 않게 한다.
-export function useClientPagination<T>(rows: T[]) {
-  const [page, setPage] = useState(1)
+
+// 페이지 번호를 화면 바깥(지금은 공지 목록의 URL 쿼리)에 두고 싶을 때 넘긴다.
+// 넘기지 않으면 훅이 제 안에 들고 있던 대로 동작한다 — 나머지 다섯 화면은 그대로다.
+type PageBinding = { page: number; setPage: (page: number) => void }
+
+export function useClientPagination<T>(rows: T[], binding?: PageBinding) {
+  const [localPage, setLocalPage] = useState(1)
+  // 어느 쪽을 쓰든 아래 규칙(범위 보정·크기 변경 시 1페이지)은 똑같이 적용된다.
+  const page = binding ? binding.page : localPage
+  const setPage = binding ? binding.setPage : setLocalPage
+  // 범위 보정 effect가 setPage를 의존성으로 갖지 않게 최신 함수를 여기 담아 둔다.
+  // useState 세터와 달리 바깥에서 넘어온 setPage는 렌더마다 새 함수라, 의존성에
+  // 넣으면 effect가 매 렌더 돌고 빼면 예전 클로저를 붙든다.
+  const setPageRef = useRef(setPage)
+  setPageRef.current = setPage
   // 리터럴 20으로 좁혀지면 50·100을 넣을 수 없다. number로 못박는다.
   const [pageSize, setPageSizeState] = useState<number>(DEFAULT_PAGE_SIZE)
 
@@ -23,7 +36,7 @@ export function useClientPagination<T>(rows: T[]) {
   // 상태에도 써 넣는다. 화면에만 보정하고 두면 목록이 다시 늘었을 때 예전 페이지
   // 번호가 되살아난다.
   useEffect(() => {
-    if (page > totalPages) setPage(totalPages)
+    if (page > totalPages) setPageRef.current(totalPages)
   }, [page, totalPages])
 
   // 크기를 줄이면 있던 페이지가 통째로 사라지므로 언제나 1페이지로 돌아간다.
