@@ -129,6 +129,32 @@ def reset_runtime_settings():
     invalidate_runtime_settings()
 
 
+@pytest.fixture(autouse=True)
+def deny_real_smtp(tmp_path, monkeypatch):
+    """스위트가 진짜 메일을 보내지 못하게 막는다.
+
+    SMTP_HOST가 비면 send_email이 파일 폴백을 타므로 실제 발송이 구조적으로
+    불가능해진다. autouse인 이유는 _deny_error_log_db와 같다 — 보호를 옵트인으로
+    두면 발송 경로를 타는 테스트가 그걸 요청하는 걸 잊는 순간 개발자 .env의 SMTP
+    계정으로 진짜 메일이 나간다. 실제로 그랬다: request 엔드포인트 테스트 3개가
+    mail_env를 받지 않아, 스위트를 한 번 돌릴 때마다 smtp.gmail.com에 접속해
+    존재하지 않는 @example.com 주소로 발송을 시도했다.
+
+    SMTP가 설정된 상태를 검증해야 하는 테스트는 자기 픽스처에서 다시 세팅한다
+    (mail_env·test_email.py의 smtp_calls). autouse가 먼저 돌므로 그쪽이 이긴다.
+
+    LOG_DIR도 함께 돌린다. SMTP를 끄면 발송이 .eml 파일 폴백을 타는데, 그대로
+    두면 진짜 메일 대신 개발자의 실제 로그 디렉토리에 .eml이 쌓인다 — 실제로
+    26개가 그렇게 쌓여 있었다. 오염 경로를 메일에서 파일로 옮기기만 하는 셈이라
+    여기서 같이 막는다.
+    """
+    monkeypatch.setenv("SMTP_HOST", "")
+    monkeypatch.setenv("LOG_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 def mail_env(tmp_path, monkeypatch):
     """메일을 파일로 떨구는 개발 모드로 고정하고, 그 출력 디렉토리를 준다.

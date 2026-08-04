@@ -45,6 +45,35 @@ async def test_request_never_returns_the_code(client, db_session):
     assert not re.search(r"\b\d{6}\b", resp.text)
 
 
+async def test_request_never_attempts_real_smtp_without_mail_env(client, db_session, monkeypatch):
+    """mail_env를 받지 않은 테스트도 진짜 메일을 보내면 안 된다.
+
+    SMTP를 끄는 장치가 옵트인이면, 로컬 .env에 SMTP가 설정된 개발자 머신에서 이
+    엔드포인트를 때리는 테스트가 매번 실제 메일을 보낸다. 실제로 그렇게 새어나갔다 —
+    스위트 한 번에 4통씩, 존재하지 않는 @example.com 주소로. 보호는 옵트인이 아니라
+    기본값이어야 하고, 이 테스트가 그 기본값을 고정한다.
+
+    발송 함수가 아니라 aiosmtplib.send를 감시하는 이유는 거기가 진짜 경계이기
+    때문이다. send_email을 스텁하면 "실제로 나가지 않는다"가 아니라 "이 테스트가
+    스텁했다"만 증명된다.
+    """
+    import aiosmtplib
+
+    attempts = []
+
+    async def _spy(*args, **kwargs):
+        attempts.append(kwargs.get("hostname"))
+
+    monkeypatch.setattr(aiosmtplib, "send", _spy)
+    await _make_user(db_session, "no-real-mail@example.com")
+
+    await client.post(
+        "/api/auth/password-reset/request", json={"email": "no-real-mail@example.com"}
+    )
+
+    assert attempts == []
+
+
 async def test_request_unknown_email_returns_same_message_and_stores_nothing(client, db_session):
     resp = await client.post("/api/auth/password-reset/request", json={"email": "nobody@example.com"})
     assert resp.status_code == 200
