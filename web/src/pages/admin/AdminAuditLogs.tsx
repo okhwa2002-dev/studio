@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { FormError } from '../../components/FormError'
+import { DEFAULT_PAGE_SIZE } from '../../components/table/PageSizeSelect'
 import { seqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
 import { ApiError } from '../../lib/api'
 import { AUDIT_ACTION_LABEL, auditLogs, type AuditLog } from '../../lib/auditLogs'
 
-const PAGE_SIZE = 50
 const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 // 오늘 / N일 전을 YYYY-MM-DD로. 로컬 기준이라 toISOString(UTC)을 쓰지 않는다.
@@ -44,6 +44,10 @@ export function AdminAuditLogs() {
   const [error, setError] = useState<string | null>(null)
   // 검색어만 입력 중 상태를 따로 둔다 — 글자마다 요청하지 않고 Enter/버튼에서 URL에 반영한다.
   const [keyword, setKeyword] = useState(searchParams.get('q') ?? '')
+  // 서버 페이징이라 useClientPagination을 쓰지 않는다 — 자를 배열이 손에 없다.
+  // 크기만 화면이 들고, 자르는 일은 서버가 한다.
+  // 리터럴 20으로 좁혀지면 50·100을 넣을 수 없어 number로 못박는다.
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
 
   // 필터는 URL 하나만 보고 정한다. 새로고침해도 유지되고, 조건이 걸린 화면을
   // 링크로 넘길 수 있다(AdminUsers와 같은 방침).
@@ -77,7 +81,7 @@ export function AdminAuditLogs() {
         success: (success || undefined) as 'Y' | 'N' | undefined,
         q: q || undefined,
         page,
-        size: PAGE_SIZE,
+        size: pageSize,
       })
       .then((data) => {
         setRows(data.items)
@@ -85,14 +89,14 @@ export function AdminAuditLogs() {
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
       .finally(() => setLoading(false))
-  }, [from, to, action, success, q, page])
+  }, [from, to, action, success, q, page, pageSize])
 
   useEffect(() => {
     load()
   }, [load])
 
   const columns: Column<AuditLog>[] = [
-    seqColumn<AuditLog>(total, page, PAGE_SIZE),
+    seqColumn<AuditLog>(total, page, pageSize),
     { header: '시각', cell: (r) => formatDateTime(r.created_at), align: 'center' },
     {
       header: '행위',
@@ -123,7 +127,7 @@ export function AdminAuditLogs() {
     },
   ]
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
     <div>
@@ -201,6 +205,13 @@ export function AdminAuditLogs() {
             totalPages={totalPages}
             onChange={(next) => setFilter({ page: String(next) })}
             total={total}
+            pageSize={pageSize}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              // 빈 patch를 넘기면 setFilter가 URL에서 page를 지운다 → 1페이지.
+              // 필터를 바꿀 때와 같은 경로를 타므로 규칙이 하나뿐이다.
+              setFilter({})
+            }}
           />
         </>
       )}
