@@ -36,6 +36,10 @@ export function useClientPagination<T>(rows: T[]) {
 
   return {
     page: safePage,
+    // 보정 전 원본 state에 쓴다 — safePage가 아니다. 지금 호출부는 전부 setPage(1)
+    // 리터럴이거나 Pagination이 넘기는 page±1이라 안전하지만(Pagination이 범위 밖
+    // 버튼을 비활성화한다), 함수형 갱신(setPage((p) => p + 1))을 쓰면 콜백이 받는
+    // p는 화면에 보이는 safePage가 아니라 이 원본 값이라 어긋난다.
     setPage,
     pageSize,
     setPageSize,

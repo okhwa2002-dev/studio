@@ -27,7 +27,10 @@ async def list_audit_logs(
     success: YN | None = None,
     q: str | None = None,
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=_MAX_SIZE),
+    # 화면 기본값(50)과 맞춘다 — 감사 로그는 90일치 × 전체 사용자 쓰기라 20건씩은
+    # 훑어보기가 되지 않아 이 화면만 50에서 시작하기로 했다. /docs에 뜨는 값이 화면과
+    # 어긋나지 않게 여기도 같이 맞춘다.
+    size: int = Query(50, ge=1, le=_MAX_SIZE),
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { FormError } from '../../components/FormError'
-import { DEFAULT_PAGE_SIZE } from '../../components/table/PageSizeSelect'
 import { seqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
@@ -47,7 +46,10 @@ export function AdminAuditLogs() {
   // 서버 페이징이라 useClientPagination을 쓰지 않는다 — 자를 배열이 손에 없다.
   // 크기만 화면이 들고, 자르는 일은 서버가 한다.
   // 리터럴 20으로 좁혀지면 50·100을 넣을 수 없어 number로 못박는다.
-  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
+  //
+  // 이 화면만 50에서 시작한다. 다른 목록은 수십~수백 건이지만 감사 로그는 90일치 × 전체
+  // 사용자 쓰기라, 20건씩은 훑어보기가 되지 않는다. 선택지는 나머지와 같은 20·50·100이다.
+  const [pageSize, setPageSize] = useState<number>(50)
 
   // 필터는 URL 하나만 보고 정한다. 새로고침해도 유지되고, 조건이 걸린 화면을
   // 링크로 넘길 수 있다(AdminUsers와 같은 방침).

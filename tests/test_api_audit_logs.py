@@ -187,15 +187,16 @@ async def test_empty_result_is_200_with_zero_total(client, db_session):
 
 
 async def test_default_size_matches_screen_default(client, db_session):
-    """size를 생략하면 화면 기본값(20)과 같은 값으로 답한다.
+    """size를 생략하면 화면 기본값 50과 같은 값으로 답한다.
 
-    프론트는 언제나 size를 보내므로 실동작은 이 값에 걸리지 않는다. 그래도 맞춰 두는
-    것은 /docs에 뜨는 기본값이 화면과 어긋나면 API만 보고 판단하는 사람이 틀리기
-    때문이다.
+    감사 로그 화면은 90일치 × 전체 사용자 쓰기라 20건씩은 훑어보기가 되지 않아
+    50에서 시작한다(다른 여섯 화면은 20). 프론트는 언제나 size를 보내므로 실동작은
+    이 값에 걸리지 않는다. 그래도 맞춰 두는 것은 /docs에 뜨는 기본값이 화면과
+    어긋나면 API만 보고 판단하는 사람이 틀리기 때문이다.
     """
     await _login(client, db_session, "logs-default-size@example.com")
     await _seed(db_session)
 
     data = await _list(client)
 
-    assert data["size"] == 20
+    assert data["size"] == 50
