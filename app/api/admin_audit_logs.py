@@ -27,7 +27,7 @@ async def list_audit_logs(
     success: YN | None = None,
     q: str | None = None,
     page: int = Query(1, ge=1),
-    size: int = Query(50, ge=1, le=_MAX_SIZE),
+    size: int = Query(20, ge=1, le=_MAX_SIZE),
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
 ):
