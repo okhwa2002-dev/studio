@@ -41,7 +41,7 @@ export function Projects() {
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
       .finally(() => setLoading(false))
-  }, [])
+  }, [setPage])
 
   useEffect(() => {
     load()

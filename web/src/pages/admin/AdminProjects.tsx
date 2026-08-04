@@ -63,7 +63,7 @@ export function AdminProjects() {
     const s = searchParams.get('status')
     if (s && STATUS_VALUES.has(s)) setStatus(s as StatusFilter)
     setPage(1)
-  }, [searchParams])
+  }, [searchParams, setPage])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -76,7 +76,7 @@ export function AdminProjects() {
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
       .finally(() => setLoading(false))
-  }, [])
+  }, [setPage])
 
   useEffect(() => {
     load()
