@@ -4,11 +4,9 @@ import { AuthCard } from '../components/AuthCard'
 import { FormError } from '../components/FormError'
 import { TextField } from '../components/TextField'
 import { account } from '../lib/account'
-import { ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { usePasswordMinLen } from '../lib/policy'
-
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
+import { useSubmit } from '../lib/useSubmit'
 
 // 관리자가 비밀번호를 초기화한 사용자가 로그인하면 RequireAuth가 이 화면으로 보낸다.
 // AppLayout 밖의 전체 화면이다 — 강제 변경 중에는 다른 메뉴를 눌러도 서버가 403으로
@@ -24,8 +22,7 @@ export function ChangePasswordRequired() {
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
+  const { pending: submitting, error, run } = useSubmit()
 
   // 서버가 최종 강제하지만, 즉각적인 피드백을 위해 클라이언트에서도 먼저 막는다.
   const tooShort = next.length > 0 && next.length < passwordMinLen
@@ -33,20 +30,23 @@ export function ChangePasswordRequired() {
   const canSubmit =
     !submitting && current.length > 0 && next.length >= passwordMinLen && next === confirm
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-    setSubmitting(true)
-    try {
-      await account.changePassword({ current_password: current, new_password: next })
-      // 서버가 쿠키를 회전해 현재 세션은 유지된다. /auth/me를 다시 읽어
-      // must_change_password가 내려간 것을 반영하면 아래 가드가 통과한다.
-      await refresh()
-      navigate('/dashboard', { replace: true })
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : UNKNOWN)
-      setSubmitting(false)
-    }
+    run(
+      async () => {
+        await account.changePassword({ current_password: current, new_password: next })
+        // 서버가 쿠키를 회전해 현재 세션은 유지된다. /auth/me를 다시 읽어
+        // must_change_password가 내려간 것을 반영하면 아래 가드가 통과한다.
+        // refresh까지 run 안에 넣는 이유: 둘 중 하나라도 못 끝내면 이 화면을 떠나면
+        // 안 되고, 버튼도 그때까지 잠겨 있어야 한다.
+        await refresh()
+      },
+      {
+        // 화면이 통째로 바뀌므로 무슨 일이 일어났는지 말해 주는 문장이 필요하다.
+        success: '비밀번호를 변경했습니다.',
+        onDone: () => navigate('/dashboard', { replace: true }),
+      },
+    )
   }
 
   return (

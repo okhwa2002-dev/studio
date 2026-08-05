@@ -4,11 +4,9 @@ import { Modal } from '../components/Modal'
 import { SettingRow } from '../components/SettingRow'
 import { TextField } from '../components/TextField'
 import { account } from '../lib/account'
-import { ApiError } from '../lib/api'
 import { usePasswordMinLen } from '../lib/policy'
 import { setThemePref, useThemePref, type ThemePref } from '../lib/theme'
-
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
+import { useSubmit } from '../lib/useSubmit'
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'system', label: '시스템' },
@@ -38,20 +36,13 @@ function ThemeControl() {
   )
 }
 
-// 비밀번호 변경 폼을 담은 팝업. 성공하면 onChanged로 알리고 스스로 닫힌다.
-function ChangePasswordModal({
-  onClose,
-  onChanged,
-}: {
-  onClose: () => void
-  onChanged: () => void
-}) {
+// 비밀번호 변경 폼을 담은 팝업. 성공하면 토스트가 알리고 스스로 닫힌다.
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const passwordMinLen = usePasswordMinLen()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
+  const { pending: submitting, error, run } = useSubmit()
 
   // 서버가 최종 강제하지만, 즉각적인 피드백을 위해 클라이언트에서도 먼저 막는다.
   const tooShort = next.length > 0 && next.length < passwordMinLen
@@ -59,19 +50,15 @@ function ChangePasswordModal({
   const canSubmit =
     !submitting && current.length > 0 && next.length >= passwordMinLen && next === confirm
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-    setSubmitting(true)
-    try {
-      await account.changePassword({ current_password: current, new_password: next })
-      // 현재 세션은 서버가 쿠키를 회전해 그대로 유지된다. 팝업을 닫고 상위에 알린다.
-      onChanged()
-      onClose()
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : UNKNOWN)
-      setSubmitting(false)
-    }
+    // 현재 세션은 서버가 쿠키를 회전해 그대로 유지된다. "다른 기기는 다시 로그인해야
+    // 한다"는 안내는 원래 설정 화면의 초록 배너가 하던 말이다 — 문장을 잃지 않도록
+    // 토스트가 그대로 이어받는다.
+    run(() => account.changePassword({ current_password: current, new_password: next }), {
+      success: '비밀번호를 변경했습니다. 다른 기기는 다시 로그인해야 합니다.',
+      onDone: onClose,
+    })
   }
 
   return (
@@ -129,26 +116,16 @@ function ChangePasswordModal({
 
 export function Settings() {
   const [showPassword, setShowPassword] = useState(false)
-  const [changed, setChanged] = useState(false)
 
   return (
     <div className="max-w-2xl space-y-4">
-      {changed && (
-        <p className="rounded-md bg-green-50 px-4 py-2 text-sm text-green-700 dark:bg-green-500/10 dark:text-green-300">
-          비밀번호를 변경했습니다. 다른 기기는 다시 로그인해야 합니다.
-        </p>
-      )}
-
       <section className="divide-y divide-line-subtle rounded-lg border border-line bg-surface px-6">
         <SettingRow label="테마" description="화면 밝기 모드를 선택합니다.">
           <ThemeControl />
         </SettingRow>
         <SettingRow label="비밀번호" description="계정 로그인에 사용하는 비밀번호를 변경합니다.">
           <button
-            onClick={() => {
-              setChanged(false)
-              setShowPassword(true)
-            }}
+            onClick={() => setShowPassword(true)}
             className="shrink-0 rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium text-fg-body hover:bg-surface-muted"
           >
             변경
@@ -156,12 +133,7 @@ export function Settings() {
         </SettingRow>
       </section>
 
-      {showPassword && (
-        <ChangePasswordModal
-          onClose={() => setShowPassword(false)}
-          onChanged={() => setChanged(true)}
-        />
-      )}
+      {showPassword && <ChangePasswordModal onClose={() => setShowPassword(false)} />}
     </div>
   )
 }
