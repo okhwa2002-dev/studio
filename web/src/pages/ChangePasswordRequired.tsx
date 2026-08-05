@@ -39,12 +39,28 @@ export function ChangePasswordRequired() {
         // must_change_password가 내려간 것을 반영하면 아래 가드가 통과한다.
         // refresh까지 run 안에 넣는 이유: 둘 중 하나라도 못 끝내면 이 화면을 떠나면
         // 안 되고, 버튼도 그때까지 잠겨 있어야 한다.
-        await refresh()
+        try {
+          await refresh()
+        } catch {
+          // 비밀번호는 이미 바뀌었다. 세션 상태를 못 읽었을 뿐인데 오류를 띄우면, 사용자는
+          // 못 쓰게 된 임시 비밀번호가 남은 폼을 보고 다시 시도하다 "틀렸다"는 말을 듣는다.
+          // 틀린 안내 대신 깨끗하게 다시 로그인시킨다.
+          await logout().catch(() => {
+            // 로그아웃 요청이 실패해도 로컬 세션은 이미 지워졌으므로(auth.tsx의 finally)
+            // 재로그인 유도는 그대로 진행한다.
+          })
+          return false
+        }
+        return true
       },
       {
         // 화면이 통째로 바뀌므로 무슨 일이 일어났는지 말해 주는 문장이 필요하다.
         success: '비밀번호를 변경했습니다.',
-        onDone: () => navigate('/dashboard', { replace: true }),
+        onDone: (refreshed) => {
+          // 로그아웃된 경우 RequireAuth가 이미 로그인 화면으로 보내므로, 여기서
+          // 대시보드로 옮기면 두 이동이 서로 충돌한다.
+          if (refreshed) navigate('/dashboard', { replace: true })
+        },
       },
     )
   }
