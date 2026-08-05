@@ -48,10 +48,15 @@ export function useSubmit() {
     }
   }, [])
 
-  // run은 절대 reject하지 않는다 — 실패도 내부에서 처리하고 정상 반환한다. 그래서
-  // AdminUsers.tsx의 onConfirm={async () => { await act(...); setConfirming(null) }}처럼
-  // 호출부가 await 뒤에 정리 코드를 그냥 이어 붙일 수 있다(성공·실패 어느 쪽이든
-  // 대화상자를 닫는다). try/catch 없이 체이닝해도 되는 이유다.
+  // run은 fn()의 실패(= API 호출 실패)는 절대 밖으로 던지지 않는다 — 잡아서 인라인
+  // 오류나 토스트로 바꾸고 정상 반환한다. 그래서 AdminUsers.tsx의
+  // onConfirm={async () => { await act(...); setConfirming(null) }}처럼 호출부가
+  // await 뒤에 정리 코드를 그냥 이어 붙일 수 있다(성공·실패 어느 쪽이든 대화상자를
+  // 닫는다). try/catch 없이 체이닝해도 되는 이유다.
+  //
+  // 반대로 onDone 안에서 던진 예외는 그대로 밖으로 전파된다(위 두 번째 try에는
+  // catch가 없다). 그건 서버가 아니라 내 성공 처리 코드의 버그이므로, run이 이걸
+  // 삼켜 API 실패인 것처럼 감추면 안 된다.
   const run = useCallback(
     async <T,>(fn: () => Promise<T>, options: RunOptions<T> = {}): Promise<void> => {
       if (running.current) return
