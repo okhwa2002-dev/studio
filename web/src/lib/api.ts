@@ -12,7 +12,7 @@ export class ApiError extends Error {
   }
 }
 
-const UNKNOWN_MESSAGE = '알 수 없는 오류가 발생했습니다.'
+export const UNKNOWN_MESSAGE = '알 수 없는 오류가 발생했습니다.'
 const NETWORK_MESSAGE = '서버에 연결할 수 없습니다.'
 
 // 401을 받아도 토큰 갱신을 시도하면 안 되는 경로.
@@ -113,3 +113,10 @@ export const api = {
   // 이름이 del인 것은 delete가 JS 연산자와 겹쳐 읽기 헷갈리기 때문이다.
   del: <T,>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
+
+// catch로 잡은 값을 사람이 읽을 문장으로 바꾼다. ApiError가 아닌 것(코드 버그로 던져진
+// TypeError 등)은 서버 메시지가 없으므로 일반 문장으로 덮는다.
+//
+// 화면 19곳에 흩어져 있던 `e instanceof ApiError ? e.message : UNKNOWN`이 이 한 줄이다.
+export const errorMessage = (e: unknown): string =>
+  e instanceof ApiError ? e.message : UNKNOWN_MESSAGE
