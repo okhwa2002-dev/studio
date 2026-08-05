@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FormError } from '../../components/FormError'
-import { ApiError } from '../../lib/api'
+import { errorMessage } from '../../lib/api'
 import {
   FAQ_CATEGORIES,
   FAQ_CATEGORY_LABEL,
@@ -10,8 +10,6 @@ import {
 } from '../../lib/faqs'
 
 type CategoryFilter = FaqCategory | 'ALL'
-
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 // Table을 쓰지 않는다 — Table은 "행 = 열들의 나열"이 전제인데 아코디언은 행 아래로
 // 열 구분 없는 본문이 펼쳐진다. colSpan 트릭을 넣으면 이후 Table을 손볼 때마다
@@ -50,7 +48,7 @@ export function Faqs() {
     faqs
       .list()
       .then(setRows)
-      .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
+      .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoading(false))
   }, [])
 

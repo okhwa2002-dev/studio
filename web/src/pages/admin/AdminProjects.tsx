@@ -6,7 +6,7 @@ import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
 import { useClientPagination } from '../../components/table/useClientPagination'
 import { adminProjects, type AdminProject } from '../../lib/admin'
-import { ApiError } from '../../lib/api'
+import { errorMessage } from '../../lib/api'
 import { STAGE_LABEL, type ProjectStatus } from '../../lib/projects'
 
 // 'ALL'은 상태 무관 전체를 뜻하는 UI 전용 값이다(백엔드 필터는 없다 — 목록을 한 번에 받아 클라이언트에서 거른다).
@@ -27,8 +27,6 @@ const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
 
 // URL ?status= 로 넘어온 값이 유효한 탭인지 검사한다(대시보드 딥링크 대비).
 const STATUS_VALUES = new Set<string>(STATUS_TABS.map((t) => t.status))
-
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 function formatDate(iso: string) {
   return iso.slice(0, 10)
@@ -74,7 +72,7 @@ export function AdminProjects() {
         setRows(data)
         setPage(1)
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
+      .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoading(false))
   }, [setPage])
 

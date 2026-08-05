@@ -3,7 +3,7 @@ import { Button } from './Button'
 import { FormError } from './FormError'
 import { Modal } from './Modal'
 import { TextField } from './TextField'
-import { api, ApiError } from '../lib/api'
+import { api, errorMessage } from '../lib/api'
 import { usePasswordMinLen } from '../lib/policy'
 
 export function PasswordResetModal({
@@ -30,7 +30,7 @@ export function PasswordResetModal({
       await api.post('/auth/password-reset/request', { email })
       setStep('code')
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : '알 수 없는 오류가 발생했습니다.')
+      setError(errorMessage(e))
     } finally {
       setPending(false)
     }
@@ -46,7 +46,7 @@ export function PasswordResetModal({
       await api.post('/auth/password-reset/verify', { email, code })
       setStep('password')
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : '알 수 없는 오류가 발생했습니다.')
+      setError(errorMessage(e))
     } finally {
       setPending(false)
     }
@@ -69,7 +69,7 @@ export function PasswordResetModal({
       await api.post('/auth/password-reset/confirm', { email, code, new_password: next })
       onDone('비밀번호가 변경되었습니다. 새 비밀번호로 로그인하세요.')
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : '알 수 없는 오류가 발생했습니다.')
+      setError(errorMessage(e))
     } finally {
       setPending(false)
     }

@@ -5,11 +5,9 @@ import { seqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
 import { useClientPagination } from '../../components/table/useClientPagination'
-import { ApiError } from '../../lib/api'
+import { errorMessage } from '../../lib/api'
 import { projects, STAGE_LABEL, type ProjectSummary } from '../../lib/projects'
 import { NewProjectModal } from './NewProjectModal'
-
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 const PROJECT_STATUS_LABEL: Record<ProjectSummary['status'], string> = {
   DRAFT: '작성 중',
@@ -39,7 +37,7 @@ export function Projects() {
         setRows(data)
         setPage(1)
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
+      .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoading(false))
   }, [setPage])
 

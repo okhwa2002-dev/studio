@@ -5,7 +5,7 @@ import { Button } from '../components/Button'
 import { FormError } from '../components/FormError'
 import { PasswordResetModal } from '../components/PasswordResetModal'
 import { TextField } from '../components/TextField'
-import { ApiError } from '../lib/api'
+import { ApiError, errorMessage } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
 export function Login() {
@@ -40,7 +40,7 @@ export function Login() {
         return
       }
       // 401 메시지는 서버가 계정 열거 방지를 위해 통일해 둔 문구다. 그대로 보여준다.
-      setError(e instanceof ApiError ? e.message : '알 수 없는 오류가 발생했습니다.')
+      setError(errorMessage(e))
     } finally {
       setPending(false)
     }

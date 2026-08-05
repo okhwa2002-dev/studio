@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { FormError } from '../../components/FormError'
 import { PinnedBadge } from '../../components/PinnedBadge'
-import { ApiError } from '../../lib/api'
+import { errorMessage, UNKNOWN_MESSAGE } from '../../lib/api'
 import { isY, notices, type Notice } from '../../lib/notices'
 import { useUnreadNotices } from '../../lib/unreadNotices'
 
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 const NOT_FOUND = '공지사항을 찾을 수 없습니다.'
 
 // 목록에서 넘어왔다면 그때의 검색어·페이지를 state로 받아 두고, [목록으로]가
@@ -43,14 +42,14 @@ export function NoticeDetail() {
         notices.markRead(row.id).then(() => refresh(), () => {})
       },
       (e) => {
-        setError(e instanceof ApiError ? e.message : UNKNOWN)
+        setError(errorMessage(e))
         setLoading(false)
       },
     )
   }, [noticeId, refresh])
 
   if (loading) return <div className="p-10 text-center text-sm text-fg-muted">불러오는 중…</div>
-  if (!notice) return <FormError message={error ?? UNKNOWN} />
+  if (!notice) return <FormError message={error ?? UNKNOWN_MESSAGE} />
 
   return (
     <div className="max-w-2xl">
