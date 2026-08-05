@@ -134,18 +134,33 @@ function UserDetailModal({
 }) {
   // 두 동작은 서로 다른 버튼에 붙어 있고 각자 "초기화 중…" 라벨을 갖는다. 훅 하나를
   // 나눠 쓰면 한쪽을 누를 때 다른 쪽 버튼까지 진행 중으로 보인다.
-  const { pending: resetting, error: resetError, run: runReset } = useSubmit()
-  const { pending: resettingPassword, error: passwordError, run: runPassword } = useSubmit()
+  const {
+    pending: resetting,
+    error: resetError,
+    run: runReset,
+    clearError: clearResetError,
+  } = useSubmit()
+  const {
+    pending: resettingPassword,
+    error: passwordError,
+    run: runPassword,
+    clearError: clearPasswordError,
+  } = useSubmit()
   const [tempPassword, setTempPassword] = useState<string | null>(null)
-  // 표시 자리는 모달 아래 한 곳뿐이다(229행) — 둘 중 있는 쪽을 보여준다.
+  // 표시 자리는 모달 아래 한 곳뿐이다 — 각 동작이 시작할 때 상대 쪽 오류를 지우므로
+  // 항상 최대 하나만 남는다.
   const error = resetError ?? passwordError
 
-  const reset = () =>
+  const reset = () => {
+    // 한쪽의 지난 실패가 다른 쪽 결과 옆에 남지 않게, 시작 전에 상대 쪽 오류를 지운다.
+    clearPasswordError()
     // 숫자가 0이 되고 버튼이 사라지는 게 전부라 너무 조용하다. 잠김 해제까지 함께
     // 일어나는데 그 사실은 화면에 드러나지 않으므로 문장으로 말해 준다.
-    runReset(() => onResetFailures(user.id), {
+    // 성공하면 부모가 failed_login_count를 0으로 갱신 → 이 행의 버튼이 사라진다.
+    return runReset(() => onResetFailures(user.id), {
       success: '로그인 실패 횟수를 초기화했습니다.',
     })
+  }
 
   const resetPassword = () => {
     // 되돌릴 수 없고 이 사용자의 모든 세션을 끊는다 — 실패 횟수 초기화와 달리 한 번 묻는다.
@@ -155,6 +170,8 @@ function UserDetailModal({
     )
     if (!ok) return
 
+    // 한쪽의 지난 실패가 다른 쪽 결과 옆에 남지 않게, 시작 전에 상대 쪽 오류를 지운다.
+    clearResetError()
     // 성공 토스트가 없다 — 발급된 임시 비밀번호가 곧바로 이 모달에 뜬다.
     // 그보다 분명한 성공 신호가 없다.
     runPassword(() => onResetPassword(user.id), { onDone: setTempPassword })
