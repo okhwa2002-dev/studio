@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { FormError } from '../../components/FormError'
 import { SettingRow } from '../../components/SettingRow'
-import { ApiError } from '../../lib/api'
+import { errorMessage } from '../../lib/api'
 import {
   systemSettings,
   type RuntimeSettings,
   type SettingsSnapshot,
 } from '../../lib/systemSettings'
+import { useSubmit } from '../../lib/useSubmit'
 
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 const MB = 1024 * 1024
 
 const SCRIPT_PROVIDERS = ['fake', 'openai', 'claude']
@@ -108,9 +108,11 @@ function Overridden({ onReset }: { onReset: () => void }) {
 export function AdminSystem() {
   const [snapshot, setSnapshot] = useState<SettingsSnapshot | null>(null)
   const [draft, setDraft] = useState<RuntimeSettings | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
-  const [saving, setSaving] = useState(false)
+  // 첫 조회 실패 전용이다. 저장 실패는 useSubmit이 따로 들고 있다 — 둘을 한 state에
+  // 담으면 "draft가 있으면 저장 실패"라는 암묵 규칙으로 구분하게 된다.
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // 조기 return(아래 if 두 줄)보다 위여야 한다. 훅은 렌더마다 같은 순서로 불려야 한다.
+  const { pending: saving, error: saveError, run, clearError } = useSubmit()
 
   useEffect(() => {
     let alive = true
@@ -123,18 +125,17 @@ export function AdminSystem() {
       })
       .catch((e) => {
         if (!alive) return
-        setError(e instanceof ApiError ? e.message : UNKNOWN)
+        setLoadError(errorMessage(e))
       })
     return () => {
       alive = false
     }
   }, [])
 
-  if (error && !draft) return <FormError message={error} />
+  if (loadError && !draft) return <FormError message={loadError} />
   if (!snapshot || !draft) return <p className="text-sm text-fg-muted">불러오는 중…</p>
 
   const set = <K extends keyof RuntimeSettings>(key: K, value: RuntimeSettings[K]) => {
-    setSaved(false)
     setDraft({ ...draft, [key]: value })
   }
   const reset = (key: keyof RuntimeSettings) => set(key, snapshot.defaults[key])
@@ -145,29 +146,18 @@ export function AdminSystem() {
   const badge = (key: keyof RuntimeSettings) =>
     changed(key) ? <Overridden onReset={() => reset(key)} /> : null
 
-  const save = async () => {
-    setError(null)
-    setSaving(true)
-    try {
-      const next = await systemSettings.save(draft)
-      setSnapshot(next)
-      setDraft(next.settings)
-      setSaved(true)
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : UNKNOWN)
-    } finally {
-      setSaving(false)
-    }
-  }
+  const save = () =>
+    run(() => systemSettings.save(draft), {
+      success: '시스템 설정을 저장했습니다.',
+      onDone: (next) => {
+        setSnapshot(next)
+        setDraft(next.settings)
+      },
+    })
 
   return (
     <div className="max-w-3xl space-y-4 pb-20">
-      {saved && (
-        <p className="rounded-md bg-green-50 px-4 py-2 text-sm text-green-700 dark:bg-green-500/10 dark:text-green-300">
-          시스템 설정을 저장했습니다.
-        </p>
-      )}
-      {error && <FormError message={error} />}
+      {saveError && <FormError message={saveError} />}
 
       <section className="divide-y divide-line-subtle rounded-lg border border-line bg-surface px-6">
         <h2 className="pt-5 pb-1 text-sm font-semibold text-fg">파이프라인 기본값</h2>
@@ -350,8 +340,7 @@ export function AdminSystem() {
           type="button"
           onClick={() => {
             setDraft(snapshot.settings)
-            setSaved(false)
-            setError(null)
+            clearError()
           }}
           disabled={!dirty || saving}
           className="rounded-md border border-line-strong px-4 py-2 text-sm font-medium text-fg-body hover:bg-surface-muted disabled:opacity-50"

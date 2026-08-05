@@ -2,10 +2,8 @@ import { useState } from 'react'
 import { FormError } from '../../components/FormError'
 import { Modal } from '../../components/Modal'
 import { TextField } from '../../components/TextField'
-import { ApiError } from '../../lib/api'
 import { projects } from '../../lib/projects'
-
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
+import { useSubmit } from '../../lib/useSubmit'
 
 // 프로젝트 등록 모달. 생성에 성공하면 목록에 머문 채 onCreated로 알린다(라우팅 없음).
 export function NewProjectModal({
@@ -18,20 +16,16 @@ export function NewProjectModal({
   const [title, setTitle] = useState('')
   const [topic, setTopic] = useState('')
   const [autoRun, setAutoRun] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
+  const { pending: submitting, error, run } = useSubmit()
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    setSubmitting(true)
-    setError(null)
-    try {
-      await projects.create({ title: title.trim(), topic: topic.trim(), auto_run: autoRun })
-      onCreated()
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : UNKNOWN)
-      setSubmitting(false)
-    }
+    // 목록에 머문 채 새로고침만 하므로(주석 참조) 새 행이 어디 생겼는지 눈에 띄지 않는다.
+    // 만들어졌다는 사실은 문장으로 말해 준다.
+    run(() => projects.create({ title: title.trim(), topic: topic.trim(), auto_run: autoRun }), {
+      success: '프로젝트를 만들었습니다.',
+      onDone: onCreated,
+    })
   }
 
   return (

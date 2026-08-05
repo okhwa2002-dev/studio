@@ -2,13 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { FormError } from '../../components/FormError'
-import { ApiError } from '../../lib/api'
-import { useToast } from '../../lib/toast'
+import { UNKNOWN_MESSAGE } from '../../lib/api'
+import { useSubmit } from '../../lib/useSubmit'
 import { subscribeProject, type StageProgress } from '../../lib/events'
 import { hasCaptions, hasRender, hasScript, hasVoice, projects, STAGE_BADGE, STAGE_LABEL, type ProjectDetail as Detail, type ScriptEditPayload, type Stage } from '../../lib/projects'
 import { ScriptEditor } from './ScriptEditor'
-
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 function StageBadge({ status }: { status: Stage['status'] }) {
   const badge = STAGE_BADGE[status]
@@ -209,25 +207,25 @@ function StageCard({
   readOnly: boolean
   onDetail: (detail: Detail) => void
 }) {
-  // 대본 편집 상태는 이 카드가 들고 있다. act()를 쓰지 않는 이유: act는 실패를 페이지
-  // 상단의 error로 올리는데, 저장 실패 시에는 편집기를 닫지 않고 그 안에 보여줘야 한다
-  // (작성 중인 내용을 날리면 안 된다).
   const [editing, setEditing] = useState(false)
-  const [savingScript, setSavingScript] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  // 대본 편집 상태는 이 카드가 들고 있다. act()를 쓰지 않는 이유: act는 실패를 페이지
+  // 상단으로 올리는데, 저장 실패는 편집기를 닫지 않고 그 안에 보여줘야 한다(작성 중인
+  // 내용을 날리면 안 된다).
+  const {
+    pending: savingScript,
+    error: saveError,
+    run: runSave,
+    clearError: clearSaveError,
+  } = useSubmit()
 
-  const saveScript = async (payload: ScriptEditPayload) => {
-    setSavingScript(true)
-    setSaveError(null)
-    try {
-      onDetail(await projects.saveScript(projectId, payload))
-      setEditing(false)
-    } catch (e) {
-      setSaveError(e instanceof ApiError ? e.message : UNKNOWN)
-    } finally {
-      setSavingScript(false)
-    }
-  }
+  const saveScript = (payload: ScriptEditPayload) =>
+    runSave(() => projects.saveScript(projectId, payload), {
+      success: '대본을 저장했습니다.',
+      onDone: (updated) => {
+        onDetail(updated)
+        setEditing(false)
+      },
+    })
 
   const editable = !readOnly && stage.name === 'script' && stage.status === 'NEEDS_REVIEW'
 
@@ -245,7 +243,7 @@ function StageCard({
           {editable && !editing && (
             <button
               onClick={() => {
-                setSaveError(null)
+                clearSaveError()
                 setEditing(true)
               }}
               disabled={acting}
@@ -322,16 +320,24 @@ export function ProjectDetail({ readOnly = false }: { readOnly?: boolean }) {
   const [progress, setProgress] = useState<Record<string, StageProgress>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [acting, setActing] = useState(false)
+  // 단계 실행·승인·재생성. 성공 문구를 넘기지 않는다 — 누르는 즉시 배지가 RUNNING으로
+  // 바뀌고 진행률이 흐른다. 화면이 이미 말하는 것을 토스트가 반복할 이유가 없고,
+  // 단계를 연속 실행하면 토스트만 쌓인다.
+  const { pending: acting, error: actError, run: runAct, clearError: clearActError } = useSubmit()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const {
+    pending: deleting,
+    error: deleteError,
+    run: runRemove,
+    clearError: clearDeleteError,
+  } = useSubmit()
   const navigate = useNavigate()
-  const toast = useToast()
 
   useEffect(() => {
     setLoading(true)
     setError(null)
+    // 다른 프로젝트로 옮겨왔는데 이전 프로젝트의 실행 실패가 남아 있으면 안 된다.
+    clearActError()
     // 첫 화면은 SSE의 snapshot이 채운다. 실패는 구독 래퍼가 재시도로 흡수한다.
     const unsubscribe = subscribeProject(projectId, (event) => {
       setLoading(false)
@@ -373,38 +379,24 @@ export function ProjectDetail({ readOnly = false }: { readOnly?: boolean }) {
       }))
     })
     return unsubscribe
-  }, [projectId])
+  }, [projectId, clearActError])
 
   // 요청을 보내는 동안만 잠근다. 실행 완료를 기다리지 않는다 — 결과는 SSE로 온다.
-  const act = async (fn: () => Promise<Detail>) => {
-    setActing(true)
-    setError(null)
-    try {
-      setDetail(await fn())
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : UNKNOWN)
-    } finally {
-      setActing(false)
-    }
-  }
+  const act = (fn: () => Promise<Detail>) => runAct(fn, { onDone: setDetail })
 
-  const remove = async () => {
-    setDeleting(true)
-    setDeleteError(null)
-    try {
-      await projects.remove(projectId)
-      toast.success('프로젝트를 삭제했습니다.')
-      // replace인 이유: 뒤로 가기로 방금 지운 상세에 돌아가면 404 화면이 뜬다.
-      navigate('/projects', { replace: true })
-    } catch (e) {
-      // 대화상자를 닫지 않는다 — 실행 중이라 거절된 경우(409) 사용자가 읽고 취소해야 한다.
-      setDeleteError(e instanceof ApiError ? e.message : UNKNOWN)
-      setDeleting(false)
-    }
-  }
+  const remove = () =>
+    runRemove(() => projects.remove(projectId), {
+      success: '프로젝트를 삭제했습니다.',
+      // 대화상자를 닫지 않는다 — 실행 중이라 거절된 경우(409) 사용자가 읽고 취소해야
+      // 하므로 실패는 기본값대로 인라인이다.
+      onDone: () => {
+        // replace인 이유: 뒤로 가기로 방금 지운 상세에 돌아가면 404 화면이 뜬다.
+        navigate('/projects', { replace: true })
+      },
+    })
 
   if (loading) return <div className="p-10 text-center text-sm text-fg-muted">불러오는 중…</div>
-  if (!detail) return <FormError message={error ?? UNKNOWN} />
+  if (!detail) return <FormError message={error ?? UNKNOWN_MESSAGE} />
 
   const voiceAttempt = detail.stages.find((s) => s.name === 'voice')?.attempt ?? null
 
@@ -413,7 +405,7 @@ export function ProjectDetail({ readOnly = false }: { readOnly?: boolean }) {
       <h1 className="text-lg font-semibold text-fg">{detail.project.title}</h1>
       <p className="mt-1 text-sm text-fg-muted">주제: {detail.project.topic}</p>
 
-      {error && <div className="mt-4"><FormError message={error} /></div>}
+      {actError && <div className="mt-4"><FormError message={actError} /></div>}
 
       <div className="mt-6">
         {detail.stages.map((s) => (
@@ -443,7 +435,7 @@ export function ProjectDetail({ readOnly = false }: { readOnly?: boolean }) {
         {!readOnly && (
           <button
             onClick={() => {
-              setDeleteError(null)
+              clearDeleteError()
               setConfirmingDelete(true)
             }}
             className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-500/10"

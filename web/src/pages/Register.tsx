@@ -4,7 +4,7 @@ import { AuthCard } from '../components/AuthCard'
 import { Button } from '../components/Button'
 import { FormError } from '../components/FormError'
 import { TextField } from '../components/TextField'
-import { ApiError } from '../lib/api'
+import { errorMessage } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { usePasswordMinLen } from '../lib/policy'
 
@@ -78,7 +78,7 @@ export function Register() {
       navigate('/pending', { replace: true })
     } catch (e) {
       // 409 = 이미 등록된 이메일. 서버 메시지를 그대로 보여준다.
-      setError(e instanceof ApiError ? e.message : '알 수 없는 오류가 발생했습니다.')
+      setError(errorMessage(e))
     } finally {
       setPending(false)
     }

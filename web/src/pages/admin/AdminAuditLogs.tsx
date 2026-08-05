@@ -5,10 +5,8 @@ import { DEFAULT_PAGE_SIZE } from '../../components/table/PageSizeSelect'
 import { seqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
-import { ApiError } from '../../lib/api'
+import { errorMessage } from '../../lib/api'
 import { AUDIT_ACTION_LABEL, auditLogs, type AuditLog } from '../../lib/auditLogs'
-
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 // 오늘 / N일 전을 YYYY-MM-DD로. 로컬 기준이라 toISOString(UTC)을 쓰지 않는다.
 function isoDate(daysAgo = 0): string {
@@ -88,7 +86,7 @@ export function AdminAuditLogs() {
         setRows(data.items)
         setTotal(data.total)
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
+      .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoading(false))
   }, [from, to, action, success, q, page, pageSize])
 

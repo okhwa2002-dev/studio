@@ -6,10 +6,8 @@ import { badgedSeqColumn } from '../../components/table/seqColumn'
 import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
 import { useClientPagination } from '../../components/table/useClientPagination'
-import { ApiError } from '../../lib/api'
+import { errorMessage } from '../../lib/api'
 import { isY, notices, type Notice } from '../../lib/notices'
-
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 // 백엔드가 로컬 naive ISO 문자열을 준다. Date로 파싱하면 타임존 보정이
 // 끼어드니 문자열을 그대로 자른다.
@@ -57,7 +55,7 @@ export function Notices() {
     notices
       .list()
       .then(setRows)
-      .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
+      .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoading(false))
   }, [])
 
