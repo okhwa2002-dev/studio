@@ -15,8 +15,9 @@ import {
   type NoticePayload,
   type NoticePhase,
 } from '../../lib/admin'
-import { ApiError } from '../../lib/api'
+import { errorMessage } from '../../lib/api'
 import { isY, toYn } from '../../lib/notices'
+import { useSubmit } from '../../lib/useSubmit'
 
 type PhaseFilter = NoticePhase | 'ALL'
 
@@ -40,8 +41,6 @@ const PHASE_BADGE: Record<NoticePhase, { label: string; className: string }> = {
   },
   ENDED: { label: '종료', className: 'bg-surface-muted text-fg-muted' },
 }
-
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 // 백엔드가 로컬 naive ISO 문자열을 주고 datetime-local 입력은 'YYYY-MM-DDTHH:mm'을
 // 원한다. Date로 파싱하면 타임존 보정이 끼어드니 문자열을 그대로 자른다.
@@ -99,8 +98,7 @@ function NoticeFormModal({
   const [endsAt, setEndsAt] = useState(toInputValue(notice?.ends_at ?? null))
   const [pinned, setPinned] = useState(notice ? isY(notice.pinned_yn) : false)
   const [popup, setPopup] = useState(notice ? isY(notice.popup_yn) : false)
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { pending, error, run } = useSubmit()
   const [confirmingPublish, setConfirmingPublish] = useState(false)
 
   // 게시는 되돌리기 어렵다 — 누르는 순간 모든 사용자가 보고, 팝업까지 켜져 있으면
@@ -114,36 +112,26 @@ function NoticeFormModal({
     return `${when} 모든 사용자에게 보입니다.${popupNote} 게시할까요?`
   }
 
-  const submit = async (status: NoticePayload['status']) => {
-    setPending(true)
-    setError(null)
-    try {
-      await onSave({
-        title,
-        body,
-        status,
-        pinned_yn: toYn(pinned),
-        popup_yn: toYn(popup),
-        starts_at: fromInputValue(startsAt),
-        ends_at: fromInputValue(endsAt),
-      })
-      // 성공하면 부모가 목록을 다시 불러오고 모달을 닫는다.
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : UNKNOWN)
-      setPending(false)
-    }
-  }
+  // onDone이 없는 이유: 모달을 닫고 목록을 다시 부르는 일은 부모의 onSave/onDelete가 이미 한다.
+  const submit = (status: NoticePayload['status']) =>
+    run(
+      () =>
+        onSave({
+          title,
+          body,
+          status,
+          pinned_yn: toYn(pinned),
+          popup_yn: toYn(popup),
+          starts_at: fromInputValue(startsAt),
+          ends_at: fromInputValue(endsAt),
+        }),
+      // 임시저장과 게시는 사용자에게 다른 사건이다 — 같은 버튼 줄에 있어도 문구를 나눈다.
+      { success: status === 'DRAFT' ? '공지를 임시저장했습니다.' : '공지를 게시했습니다.' },
+    )
 
-  const remove = async () => {
+  const remove = () => {
     if (!window.confirm('이 공지를 삭제할까요?')) return
-    setPending(true)
-    setError(null)
-    try {
-      await onDelete()
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : UNKNOWN)
-      setPending(false)
-    }
+    run(() => onDelete(), { success: '공지를 삭제했습니다.' })
   }
 
   return (
@@ -267,7 +255,7 @@ export function AdminNotices() {
     adminNotices
       .list()
       .then(setRows)
-      .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
+      .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoading(false))
   }, [])
 
