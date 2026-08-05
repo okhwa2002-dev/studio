@@ -8,9 +8,9 @@ import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
 import { useClientPagination } from '../../components/table/useClientPagination'
 import { adminUsers, type AdminUser } from '../../lib/admin'
-import { ApiError } from '../../lib/api'
+import { errorMessage } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
-import { useToast } from '../../lib/toast'
+import { useSubmit } from '../../lib/useSubmit'
 
 // UI 전용 필터 값. 'ALL'은 상태 무관 전체, 'LOCKED'는 상태와 무관하게 잠긴 계정만
 // (둘 다 백엔드에는 status 없이 요청하고 잠김은 클라이언트에서 거른다).
@@ -35,8 +35,6 @@ function readStatus(params: URLSearchParams): StatusFilter {
   const s = params.get('status')
   return s && STATUS_VALUES.has(s) ? (s as StatusFilter) : 'ALL'
 }
-
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 function roleLabel(role: AdminUser['role']) {
   return role === 'ADMIN' ? '관리자' : '일반'
@@ -134,24 +132,22 @@ function UserDetailModal({
   onResetPassword: (id: number) => Promise<string>
   onClose: () => void
 }) {
-  const [resetting, setResetting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [resettingPassword, setResettingPassword] = useState(false)
+  // 두 동작은 서로 다른 버튼에 붙어 있고 각자 "초기화 중…" 라벨을 갖는다. 훅 하나를
+  // 나눠 쓰면 한쪽을 누를 때 다른 쪽 버튼까지 진행 중으로 보인다.
+  const { pending: resetting, error: resetError, run: runReset } = useSubmit()
+  const { pending: resettingPassword, error: passwordError, run: runPassword } = useSubmit()
   const [tempPassword, setTempPassword] = useState<string | null>(null)
+  // 표시 자리는 모달 아래 한 곳뿐이다(229행) — 둘 중 있는 쪽을 보여준다.
+  const error = resetError ?? passwordError
 
-  const reset = async () => {
-    setResetting(true)
-    setError(null)
-    try {
-      await onResetFailures(user.id)
-      // 성공하면 부모가 failed_login_count를 0으로 갱신 → 이 행의 버튼이 사라진다.
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : UNKNOWN)
-      setResetting(false)
-    }
-  }
+  const reset = () =>
+    // 숫자가 0이 되고 버튼이 사라지는 게 전부라 너무 조용하다. 잠김 해제까지 함께
+    // 일어나는데 그 사실은 화면에 드러나지 않으므로 문장으로 말해 준다.
+    runReset(() => onResetFailures(user.id), {
+      success: '로그인 실패 횟수를 초기화했습니다.',
+    })
 
-  const resetPassword = async () => {
+  const resetPassword = () => {
     // 되돌릴 수 없고 이 사용자의 모든 세션을 끊는다 — 실패 횟수 초기화와 달리 한 번 묻는다.
     const ok = window.confirm(
       `${user.name}(${user.email})의 비밀번호를 초기화하시겠습니까?\n\n` +
@@ -159,15 +155,9 @@ function UserDetailModal({
     )
     if (!ok) return
 
-    setResettingPassword(true)
-    setError(null)
-    try {
-      setTempPassword(await onResetPassword(user.id))
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : UNKNOWN)
-    } finally {
-      setResettingPassword(false)
-    }
+    // 성공 토스트가 없다 — 발급된 임시 비밀번호가 곧바로 이 모달에 뜬다.
+    // 그보다 분명한 성공 신호가 없다.
+    runPassword(() => onResetPassword(user.id), { onDone: setTempPassword })
   }
 
   return (
@@ -275,7 +265,6 @@ export function AdminUsers() {
   const [rows, setRows] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [actingId, setActingId] = useState<number | null>(null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<AdminUser | null>(null)
   // 승인/거절/잠금 해제 확인 대화상자의 대상. null이면 닫힘.
@@ -283,7 +272,7 @@ export function AdminUsers() {
   const [searchParams, setSearchParams] = useSearchParams()
   // 상세에서 본인 행의 비밀번호 초기화 버튼을 감추는 데만 쓴다(서버도 400으로 막는다).
   const { user: currentUser } = useAuth()
-  const toast = useToast()
+  const { pending: acting, run } = useSubmit()
 
   // 탭 상태를 따로 두지 않고 URL에서 읽는다. 탭 클릭도 URL을 고치므로 둘이 어긋날 수
   // 없고, 대시보드에서 같은 카드를 다시 눌러도(주소가 그대로여도) 탭이 딴 데 가 있지 않다.
@@ -319,7 +308,7 @@ export function AdminUsers() {
         setRows(data)
         setPage(1)
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
+      .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoading(false))
   }, [status, setPage])
 
@@ -327,19 +316,20 @@ export function AdminUsers() {
     load()
   }, [load])
 
-  const act = async (id: number, action: ActionKey) => {
-    setActingId(id)
-    setError(null)
-    try {
-      await adminUsers[action](id)
-      load() // 처리된 사용자는 현재(대기) 목록에서 빠진다
-      toast.success(ACTION_CONFIRM[action].success)
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : UNKNOWN)
-    } finally {
-      setActingId(null)
-    }
-  }
+  const act = (id: number, action: ActionKey) =>
+    // 목록 행에서 바로 누르는 동작이라 실패를 붙일 폼이 없다 — 성공도 실패도 토스트다.
+    // (adminUsers[action]의 반환 타입이 액션마다 달라 T를 하나로 좁힐 수 없으므로,
+    // 어차피 쓰지 않는 결과값은 await로 흡수해 T를 void로 고정한다.)
+    run(
+      async () => {
+        await adminUsers[action](id)
+      },
+      {
+        success: ACTION_CONFIRM[action].success,
+        errorAs: 'toast',
+        onDone: load, // 처리된 사용자는 현재(대기) 목록에서 빠진다
+      },
+    )
 
   const resetFailures = async (id: number) => {
     await adminUsers.resetFailures(id)
@@ -385,14 +375,14 @@ export function AdminUsers() {
             <div className="flex justify-center gap-2" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={() => setConfirming({ id: u.id, action: 'approve', name: u.name })}
-                disabled={actingId !== null}
+                disabled={acting}
                 className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-on-primary disabled:opacity-50"
               >
                 승인
               </button>
               <button
                 onClick={() => setConfirming({ id: u.id, action: 'reject', name: u.name })}
-                disabled={actingId !== null}
+                disabled={acting}
                 className="rounded-md border border-line-strong px-3 py-1 text-xs font-medium text-fg-body hover:bg-surface-muted disabled:opacity-50"
               >
                 거절
@@ -405,7 +395,7 @@ export function AdminUsers() {
             <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={() => setConfirming({ id: u.id, action: 'unlock', name: u.name })}
-                disabled={actingId !== null}
+                disabled={acting}
                 className="rounded-md border border-line-strong px-3 py-1 text-xs font-medium text-fg-body hover:bg-surface-muted disabled:opacity-50"
               >
                 잠금 해제
@@ -503,7 +493,7 @@ export function AdminUsers() {
           message={ACTION_CONFIRM[confirming.action].message(confirming.name)}
           confirmLabel={ACTION_CONFIRM[confirming.action].confirmLabel}
           tone={ACTION_CONFIRM[confirming.action].tone}
-          busy={actingId !== null}
+          busy={acting}
           onConfirm={async () => {
             await act(confirming.id, confirming.action)
             setConfirming(null)
