@@ -34,6 +34,10 @@ export function useSubmit() {
   //
   // 토스트는 이 가드 밖이다 — 프로젝트를 지우고 목록으로 돌아간 화면에서도
   // "삭제했습니다"는 보여야 한다.
+  //
+  // onDone도 이 가드 밖이다. onDone은 이 컴포넌트가 아니라 아직 살아 있는 부모의 일을
+  // 하는 경우가 있다 — 예를 들어 AdminUsers.act의 onDone은 부모의 load()를 불러 목록을
+  // 다시 받아온다. 언마운트된 자식 기준으로 막으면 그 일이 조용히 사라진다.
   const alive = useRef(true)
   useEffect(() => {
     // 값을 effect 안에서 다시 켠다. StrictMode는 마운트 직후 cleanup을 한 번 돌리는데,
@@ -44,25 +48,37 @@ export function useSubmit() {
     }
   }, [])
 
+  // run은 절대 reject하지 않는다 — 실패도 내부에서 처리하고 정상 반환한다. 그래서
+  // AdminUsers.tsx의 onConfirm={async () => { await act(...); setConfirming(null) }}처럼
+  // 호출부가 await 뒤에 정리 코드를 그냥 이어 붙일 수 있다(성공·실패 어느 쪽이든
+  // 대화상자를 닫는다). try/catch 없이 체이닝해도 되는 이유다.
   const run = useCallback(
     async <T,>(fn: () => Promise<T>, options: RunOptions<T> = {}): Promise<void> => {
       if (running.current) return
       running.current = true
       setPending(true)
       setError(null)
+      let result: T
       try {
-        const result = await fn()
-        // pending을 onDone보다 먼저 내린다 — onDone이 이 컴포넌트를 언마운트시키므로
-        // 순서가 반대면 사라진 뒤에 setState하는 꼴이 된다.
-        if (alive.current) setPending(false)
-        if (options.success) toast.success(options.success)
-        options.onDone?.(result)
+        result = await fn()
       } catch (e) {
+        running.current = false
         if (alive.current) setPending(false)
         const message = errorMessage(e)
         if (options.errorAs === 'toast') toast.error(message)
         // 토스트로 보낸 오류가 화면 어딘가에 함께 남지 않도록, error는 인라인일 때만 채운다.
         else if (alive.current) setError(message)
+        return
+      }
+      // fn()의 try 밖이다 — onDone(success 콜백)이 던지면 그건 API 실패가 아니라 내
+      // 성공 처리 코드의 버그이므로, 위 catch가 그걸 삼켜 "저장 실패"로 잘못 보고하면
+      // 안 된다.
+      try {
+        // pending을 onDone보다 먼저 내린다 — onDone이 이 컴포넌트를 언마운트시키므로
+        // 순서가 반대면 사라진 뒤에 setState하는 꼴이 된다.
+        if (alive.current) setPending(false)
+        if (options.success) toast.success(options.success)
+        options.onDone?.(result)
       } finally {
         running.current = false
       }

@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import { FormError } from '../../components/FormError'
 import { SettingRow } from '../../components/SettingRow'
 import { errorMessage } from '../../lib/api'
-import { useSubmit } from '../../lib/useSubmit'
 import {
   systemSettings,
   type RuntimeSettings,
   type SettingsSnapshot,
 } from '../../lib/systemSettings'
+import { useSubmit } from '../../lib/useSubmit'
 
 const MB = 1024 * 1024
 

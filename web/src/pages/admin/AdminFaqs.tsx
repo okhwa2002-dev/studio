@@ -67,6 +67,7 @@ function FaqFormModal({
   const [sortOrder, setSortOrder] = useState(String(faq?.sort_order ?? 0))
   const { pending, error, run } = useSubmit()
 
+  // onDone이 없는 이유: 모달을 닫고 목록을 다시 부르는 일은 부모의 onSave/onDelete가 이미 한다.
   const submit = (status: FaqPayload['status']) =>
     run(
       () =>

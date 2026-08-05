@@ -208,8 +208,9 @@ function StageCard({
   onDetail: (detail: Detail) => void
 }) {
   const [editing, setEditing] = useState(false)
-  // act()를 쓰지 않는 이유: act는 실패를 페이지 상단으로 올리는데, 저장 실패는 편집기를
-  // 닫지 않고 그 안에 보여줘야 한다(작성 중인 내용을 날리면 안 된다).
+  // 대본 편집 상태는 이 카드가 들고 있다. act()를 쓰지 않는 이유: act는 실패를 페이지
+  // 상단으로 올리는데, 저장 실패는 편집기를 닫지 않고 그 안에 보여줘야 한다(작성 중인
+  // 내용을 날리면 안 된다).
   const {
     pending: savingScript,
     error: saveError,
@@ -322,7 +323,7 @@ export function ProjectDetail({ readOnly = false }: { readOnly?: boolean }) {
   // 단계 실행·승인·재생성. 성공 문구를 넘기지 않는다 — 누르는 즉시 배지가 RUNNING으로
   // 바뀌고 진행률이 흐른다. 화면이 이미 말하는 것을 토스트가 반복할 이유가 없고,
   // 단계를 연속 실행하면 토스트만 쌓인다.
-  const { pending: acting, error: actError, run: runAct } = useSubmit()
+  const { pending: acting, error: actError, run: runAct, clearError: clearActError } = useSubmit()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const {
     pending: deleting,
@@ -335,6 +336,8 @@ export function ProjectDetail({ readOnly = false }: { readOnly?: boolean }) {
   useEffect(() => {
     setLoading(true)
     setError(null)
+    // 다른 프로젝트로 옮겨왔는데 이전 프로젝트의 실행 실패가 남아 있으면 안 된다.
+    clearActError()
     // 첫 화면은 SSE의 snapshot이 채운다. 실패는 구독 래퍼가 재시도로 흡수한다.
     const unsubscribe = subscribeProject(projectId, (event) => {
       setLoading(false)
@@ -376,7 +379,7 @@ export function ProjectDetail({ readOnly = false }: { readOnly?: boolean }) {
       }))
     })
     return unsubscribe
-  }, [projectId])
+  }, [projectId, clearActError])
 
   // 요청을 보내는 동안만 잠근다. 실행 완료를 기다리지 않는다 — 결과는 SSE로 온다.
   const act = (fn: () => Promise<Detail>) => runAct(fn, { onDone: setDetail })
