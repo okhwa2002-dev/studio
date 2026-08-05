@@ -6,8 +6,9 @@ import { Table, type Column } from '../../components/table/Table'
 import { TableFooter } from '../../components/table/TableFooter'
 import { useClientPagination } from '../../components/table/useClientPagination'
 import { adminFaqs, type AdminFaq, type FaqPayload } from '../../lib/admin'
-import { ApiError } from '../../lib/api'
+import { errorMessage } from '../../lib/api'
 import { FAQ_CATEGORIES, FAQ_CATEGORY_LABEL, type FaqCategory } from '../../lib/faqs'
+import { useSubmit } from '../../lib/useSubmit'
 
 type StatusFilter = AdminFaq['status'] | 'ALL'
 
@@ -25,8 +26,6 @@ const STATUS_BADGE: Record<AdminFaq['status'], { label: string; className: strin
     className: 'bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300',
   },
 }
-
-const UNKNOWN = '알 수 없는 오류가 발생했습니다.'
 
 const INPUT_CLASS =
   'w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-fg focus:border-fg-muted focus:outline-none'
@@ -66,37 +65,24 @@ function FaqFormModal({
   const [category, setCategory] = useState<FaqCategory>(faq?.category ?? 'ETC')
   // 입력 중에 빈 문자열이 될 수 있어 문자열로 들고 있다가 보낼 때 숫자로 바꾼다.
   const [sortOrder, setSortOrder] = useState(String(faq?.sort_order ?? 0))
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { pending, error, run } = useSubmit()
 
-  const submit = async (status: FaqPayload['status']) => {
-    setPending(true)
-    setError(null)
-    try {
-      await onSave({
-        question,
-        answer,
-        category,
-        status,
-        sort_order: Number(sortOrder) || 0,
-      })
-      // 성공하면 부모가 목록을 다시 불러오고 모달을 닫는다.
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : UNKNOWN)
-      setPending(false)
-    }
-  }
+  const submit = (status: FaqPayload['status']) =>
+    run(
+      () =>
+        onSave({
+          question,
+          answer,
+          category,
+          status,
+          sort_order: Number(sortOrder) || 0,
+        }),
+      { success: status === 'DRAFT' ? 'FAQ를 임시저장했습니다.' : 'FAQ를 게시했습니다.' },
+    )
 
-  const remove = async () => {
+  const remove = () => {
     if (!window.confirm('이 FAQ를 삭제할까요?')) return
-    setPending(true)
-    setError(null)
-    try {
-      await onDelete()
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : UNKNOWN)
-      setPending(false)
-    }
+    run(() => onDelete(), { success: 'FAQ를 삭제했습니다.' })
   }
 
   return (
@@ -193,7 +179,7 @@ export function AdminFaqs() {
     adminFaqs
       .list()
       .then(setRows)
-      .catch((e) => setError(e instanceof ApiError ? e.message : UNKNOWN))
+      .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoading(false))
   }, [])
 
