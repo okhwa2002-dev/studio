@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 
 // 화면 중앙에 뜨는 모달. Esc와 닫기(✕) 버튼으로만 닫힌다.
 // 도메인은 모른다 — 무엇을 담을지·언제 닫을지는 쓰는 쪽이 정한다(children/onClose).
@@ -15,6 +15,11 @@ const WIDTH_CLASS = {
   lg: 'max-w-2xl', // 항목이 많은 상세(회원 상세 등)
 } as const
 
+// 열려 있는 모달들. 모달마다 window에 Esc 리스너를 다는데, 모달 위에 모달이 뜨는
+// 경우(입력 폼 위의 확인창) 그대로 두면 Esc 한 번에 아래 것까지 닫혀 작성 중이던
+// 내용이 사라진다. 맨 나중에 열린 것만 Esc에 반응하게 한다.
+const openModals: object[] = []
+
 export function Modal({
   title,
   onClose,
@@ -26,13 +31,23 @@ export function Modal({
   width?: keyof typeof WIDTH_CLASS
   children: ReactNode
 }) {
+  // 등록은 열고 닫을 때 한 번씩만 한다 — onClose가 렌더마다 새 함수인 호출부가 많은데,
+  // 그때마다 다시 등록하면 이 모달이 스택 맨 위로 올라가 위에 뜬 확인창을 밀어낸다.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   useEffect(() => {
+    const self = {}
+    openModals.push(self)
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape' && openModals[openModals.length - 1] === self) onCloseRef.current()
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+    return () => {
+      openModals.splice(openModals.indexOf(self), 1)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [])
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-overlay p-4">

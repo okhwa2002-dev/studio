@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { FormError } from '../../components/FormError'
 import { Modal } from '../../components/Modal'
 import { PinnedBadge } from '../../components/PinnedBadge'
@@ -100,6 +101,18 @@ function NoticeFormModal({
   const [popup, setPopup] = useState(notice ? isY(notice.popup_yn) : false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmingPublish, setConfirmingPublish] = useState(false)
+
+  // 게시는 되돌리기 어렵다 — 누르는 순간 모든 사용자가 보고, 팝업까지 켜져 있으면
+  // 대시보드에 바로 뜬다. 무슨 일이 일어나는지 문장으로 보여주고 한 번 더 받는다.
+  const publishMessage = (): string => {
+    // 시작 일시를 비워두면 서버가 지금 시각으로 채운다. 미래면 그때부터 보인다.
+    // 폭이 다른 문자열을 비교하면 같은 시각이 어긋나므로 분까지로 잘라 맞춘다.
+    const scheduled = startsAt && startsAt > localNowIso().slice(0, 16)
+    const when = scheduled ? `${startsAt.replace('T', ' ')}부터` : '지금부터'
+    const popupNote = popup ? ' 대시보드 팝업으로도 뜹니다.' : ''
+    return `${when} 모든 사용자에게 보입니다.${popupNote} 게시할까요?`
+  }
 
   const submit = async (status: NoticePayload['status']) => {
     setPending(true)
@@ -134,87 +147,108 @@ function NoticeFormModal({
   }
 
   return (
-    <Modal title={notice ? '공지 수정' : '새 공지'} onClose={onClose}>
-      <div className="space-y-4">
-        <Field label="제목">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className={INPUT_CLASS}
-            placeholder="공지 제목"
-          />
-        </Field>
-        <Field label="내용">
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={6}
-            className={INPUT_CLASS}
-            placeholder="줄바꿈은 그대로 보입니다."
-          />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="게시 시작 (비우면 게시 시각)">
+    <>
+      <Modal title={notice ? '공지 수정' : '새 공지'} onClose={onClose}>
+        <div className="space-y-4">
+          <Field label="제목">
             <input
-              type="datetime-local"
-              value={startsAt}
-              onChange={(e) => setStartsAt(e.target.value)}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
               className={INPUT_CLASS}
+              placeholder="공지 제목"
             />
           </Field>
-          <Field label="게시 종료 (비우면 무기한)">
-            <input
-              type="datetime-local"
-              value={endsAt}
-              onChange={(e) => setEndsAt(e.target.value)}
+          <Field label="내용">
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={6}
               className={INPUT_CLASS}
+              placeholder="줄바꿈은 그대로 보입니다."
             />
           </Field>
-        </div>
-        <div className="flex gap-6 text-sm text-fg-body">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} />
-            목록 상단 고정
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={popup} onChange={(e) => setPopup(e.target.checked)} />
-            메인 팝업으로 노출
-          </label>
-        </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="게시 시작 (비우면 게시 시각)">
+              <input
+                type="datetime-local"
+                value={startsAt}
+                onChange={(e) => setStartsAt(e.target.value)}
+                className={INPUT_CLASS}
+              />
+            </Field>
+            <Field label="게시 종료 (비우면 무기한)">
+              <input
+                type="datetime-local"
+                value={endsAt}
+                onChange={(e) => setEndsAt(e.target.value)}
+                className={INPUT_CLASS}
+              />
+            </Field>
+          </div>
+          <div className="flex gap-6 text-sm text-fg-body">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={pinned}
+                onChange={(e) => setPinned(e.target.checked)}
+              />
+              목록 상단 고정
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={popup} onChange={(e) => setPopup(e.target.checked)} />
+              메인 팝업으로 노출
+            </label>
+          </div>
 
-        {error && <FormError message={error} />}
+          {error && <FormError message={error} />}
 
-        <div className="flex items-center justify-between border-t border-line-subtle pt-4">
-          {notice ? (
-            <button
-              onClick={remove}
-              disabled={pending}
-              className="rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-surface-muted disabled:opacity-50 dark:text-red-300"
-            >
-              삭제
-            </button>
-          ) : (
-            <span />
-          )}
-          <div className="flex gap-2">
-            <button
-              onClick={() => submit('DRAFT')}
-              disabled={pending}
-              className="rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium text-fg-body hover:bg-surface-muted disabled:opacity-50"
-            >
-              임시저장
-            </button>
-            <button
-              onClick={() => submit('PUBLISHED')}
-              disabled={pending}
-              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-on-primary disabled:opacity-50"
-            >
-              게시하기
-            </button>
+          <div className="flex items-center justify-between border-t border-line-subtle pt-4">
+            {notice ? (
+              <button
+                onClick={remove}
+                disabled={pending}
+                className="rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-surface-muted disabled:opacity-50 dark:text-red-300"
+              >
+                삭제
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => submit('DRAFT')}
+                disabled={pending}
+                className="rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium text-fg-body hover:bg-surface-muted disabled:opacity-50"
+              >
+                임시저장
+              </button>
+              <button
+                onClick={() => setConfirmingPublish(true)}
+                disabled={pending}
+                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-on-primary disabled:opacity-50"
+              >
+                게시하기
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
+
+      {/* 확인창을 먼저 닫고 저장한다 — 실패 메시지는 폼 안에 뜨고, 제목이 비었거나
+          기간이 어긋난 경우처럼 입력을 고쳐야 하는 오류가 대부분이라 폼이 보여야 한다. */}
+      {confirmingPublish && (
+        <ConfirmDialog
+          title="공지 게시"
+          message={publishMessage()}
+          confirmLabel="게시하기"
+          onConfirm={() => {
+            setConfirmingPublish(false)
+            submit('PUBLISHED')
+          }}
+          onClose={() => setConfirmingPublish(false)}
+        />
+      )}
+    </>
   )
 }
 
